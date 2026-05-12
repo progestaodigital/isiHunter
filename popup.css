@@ -845,3 +845,119 @@ body {
 }
 .history-row.aprovado  .history-tag { background: rgba(34,197,94,.12);  color: var(--green); }
 .history-row.descartado .history-tag { background: rgba(113,113,122,.12); color: var(--text-dim); }
+
+/* ═══════════════════════════════════════════════════════════
+   ABA LICENÇA
+═══════════════════════════════════════════════════════════ */
+
+#tab-license { padding: 18px 16px; }
+
+.lic-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 18px 8px 12px;
+}
+
+.lic-screen.hidden { display: none; }
+
+.lic-icon {
+  font-size: 36px;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-bottom: 12px;
+}
+.lic-icon-key  { background: var(--accent-dim); color: var(--accent); }
+.lic-icon-ok   { background: rgba(34,197,94,.15);  color: var(--green); font-weight: 700; }
+.lic-icon-warn { background: rgba(245,158,11,.15); color: var(--yellow); }
+.lic-icon-err  { background: rgba(239,68,68,.15);  color: var(--red); font-weight: 700; }
+
+.lic-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.lic-subtitle {
+  font-size: .82rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+  max-width: 320px;
+}
+
+.lic-meta {
+  font-size: .7rem;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.lic-screen .field {
+  width: 100%;
+  max-width: 280px;
+  margin-bottom: 12px;
+}
+
+.lic-screen input[type="text"] {
+  text-align: center;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  letter-spacing: 0.5px;
+  font-size: .82rem;
+  text-transform: uppercase;
+}
+
+.lic-screen .actions-row {
+  width: 100%;
+  max-width: 280px;
+  justify-content: center;
+}
+
+#lic-input-hint.error { color: var(--red); }
+
+/* Banner de licença inativa exibido nas outras abas */
+.lic-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 8px 12px;
+  background: rgba(239,68,68,.10);
+  border: 1px solid rgba(239,68,68,.30);
+  color: var(--red);
+  font-size: .75rem;
+  border-radius: var(--radius-sm);
+}
+.lic-banner.hidden { display: none; }
+
+/* Toast genérico já existe — mas garantimos cor pra erro */
+.toast.error {
+  background: rgba(239,68,68,.15);
+  border: 1px solid rgba(239,68,68,.40);
+  color: var(--red);
+}
+
+/* Ajuste pra 8 tabs caberem em 420px */
+.tabs .tab {
+  font-size: .68rem;
+  padding: 8px 4px;
+  gap: 3px;
+}
+.tabs .tab svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Estado disabled real (não só visual) pra botões de ação quando licença inválida */
+.btn.disabled-license,
+button.disabled-license {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}

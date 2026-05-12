@@ -73,6 +73,12 @@
       </svg>
       Backup
     </button>
+    <button class="tab" data-tab="license">
+      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+      </svg>
+      Licença
+    </button>
   </nav>
 
   <!-- ════════════════════════════════════════════════════════════════
@@ -397,6 +403,99 @@
     </div>
   </section>
 
+  <!-- ════════════════════════════════════════════════════════════════
+       ABA: LICENÇA
+  ═══════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-license">
+
+    <!-- Estado: sem chave -->
+    <div class="lic-screen" id="lic-screen-no_key">
+      <div class="lic-icon lic-icon-key">🔑</div>
+      <h2 class="lic-title">Ative sua licença</h2>
+      <p class="lic-subtitle">Cole sua chave de licença pra começar a usar o isiHunter.</p>
+      <div class="field">
+        <input id="lic-input" type="text" placeholder="ISI-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" />
+        <span class="hint" id="lic-input-hint"></span>
+      </div>
+      <button class="btn btn-primary" id="btn-lic-activate">Ativar</button>
+    </div>
+
+    <!-- Estado: licença válida -->
+    <div class="lic-screen hidden" id="lic-screen-valid">
+      <div class="lic-icon lic-icon-ok">✓</div>
+      <h2 class="lic-title">Licença ativa</h2>
+      <p class="lic-subtitle" id="lic-expires">Expira em DD/MM/YYYY</p>
+      <div class="lic-meta" id="lic-hwid-meta">Vinculada a este dispositivo</div>
+      <div class="actions-row">
+        <button class="btn btn-secondary" id="btn-lic-revalidate">↻ Revalidar</button>
+        <button class="btn btn-secondary" id="btn-lic-change">Trocar chave</button>
+      </div>
+    </div>
+
+    <!-- Estado: licença expirada -->
+    <div class="lic-screen hidden" id="lic-screen-expired">
+      <div class="lic-icon lic-icon-warn">⏰</div>
+      <h2 class="lic-title">Licença expirou</h2>
+      <p class="lic-subtitle" id="lic-expired-text">Renove pra continuar usando.</p>
+      <div class="actions-row">
+        <button class="btn btn-primary hidden" id="btn-lic-renew">Renovar</button>
+        <button class="btn btn-secondary" id="btn-lic-change-2">Trocar chave</button>
+      </div>
+    </div>
+
+    <!-- Estado: licença bloqueada -->
+    <div class="lic-screen hidden" id="lic-screen-blocked">
+      <div class="lic-icon lic-icon-err">🚫</div>
+      <h2 class="lic-title">Licença bloqueada</h2>
+      <p class="lic-subtitle">Entre em contato com o suporte.</p>
+      <div class="actions-row">
+        <button class="btn btn-primary hidden" id="btn-lic-support">Suporte</button>
+        <button class="btn btn-secondary" id="btn-lic-change-3">Trocar chave</button>
+      </div>
+    </div>
+
+    <!-- Estado: invalid / hwid_mismatch -->
+    <div class="lic-screen hidden" id="lic-screen-invalid">
+      <div class="lic-icon lic-icon-err">✕</div>
+      <h2 class="lic-title">Chave inválida</h2>
+      <p class="lic-subtitle">Chave inválida ou vinculada a outra instalação.</p>
+      <div class="actions-row">
+        <button class="btn btn-secondary" id="btn-lic-change-4">Trocar chave</button>
+      </div>
+    </div>
+
+    <!-- Estado: rate_limited -->
+    <div class="lic-screen hidden" id="lic-screen-rate_limited">
+      <div class="lic-icon lic-icon-warn">⏱</div>
+      <h2 class="lic-title">Muitas tentativas</h2>
+      <p class="lic-subtitle">Aguarde <span id="lic-countdown">--</span>s antes de tentar novamente.</p>
+    </div>
+
+    <!-- Estado: sem conexão -->
+    <div class="lic-screen hidden" id="lic-screen-network_error">
+      <div class="lic-icon lic-icon-warn">📡</div>
+      <h2 class="lic-title">Sem conexão</h2>
+      <p class="lic-subtitle">Verifique sua internet e tente novamente.</p>
+      <button class="btn btn-secondary" id="btn-lic-retry-net">Tentar novamente</button>
+    </div>
+
+    <!-- Estado: servidor de licença indisponível -->
+    <div class="lic-screen hidden" id="lic-screen-server_error">
+      <div class="lic-icon lic-icon-warn">⚠</div>
+      <h2 class="lic-title">Servidor de licença indisponível</h2>
+      <p class="lic-subtitle">Tente novamente em alguns minutos.</p>
+      <button class="btn btn-secondary" id="btn-lic-retry-srv">Tentar novamente</button>
+    </div>
+
+    <div class="toast" id="license-toast"></div>
+  </section>
+
+  <!-- ════ Banner de licença inativa em outras abas ══════════════════════ -->
+  <div class="lic-banner hidden" id="lic-banner">
+    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+    <span>Licença inativa — verifique na aba Licença</span>
+  </div>
+
   <!-- ════ Overlay de detalhe do perfil ══════════════════════════════════ -->
   <div class="card-detail-overlay hidden" id="card-detail-overlay">
     <div class="card-detail-header">
@@ -417,6 +516,6 @@
 
 </div><!-- /.app -->
 
-<script type="module" src="popup.js?v=15"></script>
+<script type="module" src="popup.js?v=16"></script>
 </body>
 </html>

@@ -21,17 +21,52 @@ import {
 } from './db.js';
 import { qualifyProfile, generateIcebreaker, generateHook, generateComment } from './openai.js';
 import { sendLead } from './webhook.js';
+import { validateLicense, gateAction, pulse, ensureAlarm, ALARM as LICENSE_ALARM } from './sync.js';
 
 // ─── Estado em memória ────────────────────────────────────────────────────
 let igTabId = null;
 
-// ─── Keep-alive: evita que o service worker durma durante a prospecção ────
+// ─── Keep-alive + alarm de licença ────────────────────────────────────────
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
-chrome.alarms.onAlarm.addListener(alarm => {
+ensureAlarm();
+chrome.alarms.onAlarm.addListener(async alarm => {
   if (alarm.name === 'keepAlive') {
-    chrome.storage.local.get('isi_stats', () => {}); // Apenas acessa o storage
+    chrome.storage.local.get('isi_stats', () => {});
+  } else if (alarm.name === LICENSE_ALARM) {
+    const r = await validateLicense({ force: true });
+    if (r?.status !== 'valid') await __interruptOnRevocation(r);
   }
 });
+
+// Validação no boot do service worker (silent: usa cache fresco se houver)
+(async () => {
+  try {
+    const r = await validateLicense({ silent: true });
+    if (r?.status && r.status !== 'valid' && r.status !== 'no_key') {
+      await __interruptOnRevocation(r);
+    }
+  } catch (_) {}
+})();
+
+// Interrompe prospecção em curso se a licença for revogada
+async function __interruptOnRevocation(status) {
+  const stats = await getStats();
+  if (!stats.active) return;
+  await saveStats({ active: false });
+
+  // Tenta parar via igTabId em memória; senão, varre abas do Instagram
+  if (igTabId) {
+    try { await sendToContent(igTabId, { type: 'STOP_COLLECTION' }); } catch (_) {}
+  }
+  try {
+    const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
+    for (const t of igTabs) {
+      try { await sendToContent(t.id, { type: 'STOP_COLLECTION' }); } catch (_) {}
+    }
+  } catch (_) {}
+
+  broadcast({ type: 'LICENSE_REVOKED', license_status: status?.status || 'invalid' });
+}
 
 // ─── Roteador de mensagens ────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -41,13 +76,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true, ...(result || {}) });
     } catch (err) {
       console.error('[IsiHunter BG]', err);
-      sendResponse({ ok: false, error: err.message });
+      const payload = { ok: false, error: err.message };
+      if (err.license_status) payload.license_status = err.license_status;
+      sendResponse(payload);
     }
   })();
   return true; // Canal assíncrono
 });
 
+// Ações que exigem licença válida (gate antes de processar)
+const GATED_ACTIONS = new Set(['START_PROSPECTING', 'START_LIST_PROSPECTING', 'SEND_DM', 'POST_COMMENT', 'SEND_WEBHOOK']);
+
 async function route(msg, _sender) {
+  // Gate de licença pra ações sensíveis
+  if (GATED_ACTIONS.has(msg.type)) {
+    const r = await validateLicense({ force: true });
+    if (r?.status !== 'valid') {
+      const err = new Error('license_required');
+      err.license_status = r?.status || 'unknown';
+      throw err;
+    }
+  }
+
   switch (msg.type) {
     case 'START_PROSPECTING':       return startProspecting();
     case 'START_LIST_PROSPECTING':  return startListProspecting(msg.usernames);
@@ -68,6 +118,7 @@ async function route(msg, _sender) {
     case 'COLLECTION_DONE':     return onCollectionDone();
     case 'COLLECTION_ERROR':    return onCollectionError(msg.error);
     case 'CHECK_ACTIVE':        return checkActiveState();
+    case 'CHECK_LICENSE':       return { status: (await validateLicense({ silent: true }))?.status };
     case 'PROGRESS':            return {}; // emitido por content.js, consumido pelo popup — no-op aqui
     case 'PING':                return { pong: true };
     default:                    throw new Error(`Mensagem desconhecida: ${msg.type}`);

@@ -1,6 +1,10 @@
 // popup.js — Controlador do popup (ES Module)
 
 import { getSettings, saveSettings, getStats, getLog, clearLog, getHistory, clearHistory, getBlacklist, saveBlacklist, getGraylist, saveGraylist } from './db.js';
+import {
+  validateLicense, gateAction, normalizeKey, isKeyFormatValid,
+  saveLicenseKey, clearLicense, getCurrentStatus,
+} from './sync.js';
 
 // ─── Inicialização ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -13,7 +17,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   initProspecting();
   initList();
   initHistory();
+  initLicense();
   listenForProgress();
+
+  // Refresca estado da licença ao abrir o popup (silent = usa cache fresco)
+  await refreshLicenseUI({ silent: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -114,13 +122,34 @@ function initBackup() {
 }
 
 async function exportSettings() {
+  if (!await gateAction()) { onLicenseDeniedDuringAction(); return; }
   const cfg = await getSettings();
   downloadFile(JSON.stringify(cfg, null, 2), 'isihunter-config.json', 'application/json');
+}
+
+async function exportBlacklist() {
+  if (!await gateAction()) { onLicenseDeniedDuringAction(); return; }
+  const data = await getBlacklist();
+  const usernames = Object.keys(data);
+  const rows = ['username', ...usernames].join('\n');
+  downloadFile(rows, 'isihunter-blacklist.csv', 'text/csv');
+}
+
+async function exportGraylist() {
+  if (!await gateAction()) { onLicenseDeniedDuringAction(); return; }
+  const data = await getGraylist();
+  const lines = ['username,expira_em'];
+  for (const [username, ts] of Object.entries(data)) {
+    const expira = new Date(ts).toISOString();
+    lines.push(`${username},${expira}`);
+  }
+  downloadFile(lines.join('\n'), 'isihunter-graylist.csv', 'text/csv');
 }
 
 async function importSettings(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  if (!await gateAction()) { e.target.value = ''; onLicenseDeniedDuringAction(); return; }
   try {
     const text = await file.text();
     const cfg  = JSON.parse(text);
@@ -133,26 +162,10 @@ async function importSettings(e) {
   e.target.value = '';
 }
 
-async function exportBlacklist() {
-  const data = await getBlacklist();
-  const usernames = Object.keys(data);
-  const rows = ['username', ...usernames].join('\n');
-  downloadFile(rows, 'isihunter-blacklist.csv', 'text/csv');
-}
-
-async function exportGraylist() {
-  const data = await getGraylist();
-  const lines = ['username,expira_em'];
-  for (const [username, ts] of Object.entries(data)) {
-    const expira = new Date(ts).toISOString();
-    lines.push(`${username},${expira}`);
-  }
-  downloadFile(lines.join('\n'), 'isihunter-graylist.csv', 'text/csv');
-}
-
 async function importBlacklist(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  if (!await gateAction()) { e.target.value = ''; onLicenseDeniedDuringAction(); return; }
   try {
     const text = await file.text();
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -171,6 +184,7 @@ async function importBlacklist(e) {
 async function importGraylist(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  if (!await gateAction()) { e.target.value = ''; onLicenseDeniedDuringAction(); return; }
   try {
     const text = await file.text();
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -257,6 +271,7 @@ async function startListProspecting() {
 
   const res = await sendToBg({ type: 'START_LIST_PROSPECTING', usernames: _pendingUsernames });
   if (res?.ok === false) {
+    if (res.error === 'license_required') { onLicenseDeniedDuringAction(res.license_status); btnList.disabled = false; return; }
     showError(res.error || 'Erro ao iniciar triagem');
     btnList.disabled = _pendingUsernames.length === 0;
     return;
@@ -281,6 +296,7 @@ async function startProspecting() {
 
   const res = await sendToBg({ type: 'START_PROSPECTING' });
   if (res?.ok === false) {
+    if (res.error === 'license_required') { onLicenseDeniedDuringAction(res.license_status); btnStart.disabled = false; return; }
     showError(res.error || 'Erro ao iniciar prospecção');
     btnStart.disabled = false;
     return;
@@ -340,12 +356,20 @@ async function restoreState() {
 // ─── Listener de atualizações do background ──────────────────────────────
 function listenForProgress() {
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === 'PROGRESS')       handleProgress(msg);
-    if (msg.type === 'DM_SENT')        handleDmSent(msg.username);
-    if (msg.type === 'COMMENT_POSTED') handleCommentPosted(msg.username);
-    if (msg.type === 'WEBHOOK_SENT')   handleWebhookSent(msg.username);
-    if (msg.type === 'WEBHOOK_ERROR')  handleWebhookError(msg.username, msg.error);
+    if (msg.type === 'PROGRESS')         handleProgress(msg);
+    if (msg.type === 'DM_SENT')          handleDmSent(msg.username);
+    if (msg.type === 'COMMENT_POSTED')   handleCommentPosted(msg.username);
+    if (msg.type === 'WEBHOOK_SENT')     handleWebhookSent(msg.username);
+    if (msg.type === 'WEBHOOK_ERROR')    handleWebhookError(msg.username, msg.error);
+    if (msg.type === 'LICENSE_REVOKED')  handleLicenseRevoked(msg.license_status);
   });
+}
+
+function handleLicenseRevoked(status) {
+  resetProspectingButtons();
+  addLogEntry({ action: 'error', message: 'Licença revogada — prospecção interrompida.' });
+  refreshLicenseUI({ silent: true });
+  switchTab('license');
 }
 
 function handleProgress(msg) {
@@ -664,6 +688,9 @@ function renderProfiles(profiles) {
 
   container.innerHTML = '';
   profiles.forEach(p => container.appendChild(buildProfileCard(p)));
+
+  // Re-aplica gate de licença em botões recém-criados
+  if (_lastLicenseStatus) applyLicenseGating(_lastLicenseStatus);
 }
 
 function buildProfileCard(profile) {
@@ -806,6 +833,7 @@ function buildProfileCard(profile) {
       message:  profile.mensagem_icebreaker || profile.mensagem_gerada || '',
     });
     if (res?.ok === false) {
+      if (res.error === 'license_required') { onLicenseDeniedDuringAction(res.license_status); btn.disabled = false; btn.textContent = 'Enviar DM'; return; }
       btn.disabled = false;
       btn.textContent = 'Enviar DM';
       showError(res.error || 'Erro ao enviar DM');
@@ -821,6 +849,7 @@ function buildProfileCard(profile) {
     btn.textContent = 'Enviando…';
     const res = await sendToBg({ type: 'SEND_WEBHOOK', username: profile.username });
     if (res?.ok === false) {
+      if (res.error === 'license_required') { onLicenseDeniedDuringAction(res.license_status); btn.disabled = false; btn.textContent = '↺ Reenviar Webhook'; return; }
       btn.disabled = false;
       btn.textContent = '↺ Reenviar Webhook';
       showError(res.error || 'Erro ao enviar para o Webhook');
@@ -840,6 +869,7 @@ function buildProfileCard(profile) {
       comment:  profile.comentario_gerado || '',
     });
     if (res?.ok === false) {
+      if (res.error === 'license_required') { onLicenseDeniedDuringAction(res.license_status); btn.disabled = false; btn.textContent = 'Comentar Post'; return; }
       btn.disabled = false;
       btn.textContent = 'Comentar Post';
       showError(res.error || 'Erro ao postar comentário');
@@ -943,6 +973,217 @@ function showToast(id, message, type = 'success') {
   el.className = `toast ${type}`;
   el.style.display = 'block';
   setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LICENÇA — UI da aba + gating
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _lastLicenseStatus = null;
+let _countdownInterval = null;
+
+function initLicense() {
+  // Input com auto-format
+  const input = document.getElementById('lic-input');
+  input?.addEventListener('input', e => {
+    const norm = normalizeKey(e.target.value);
+    if (norm !== e.target.value) e.target.value = norm;
+  });
+  input?.addEventListener('paste', e => {
+    setTimeout(() => { e.target.value = normalizeKey(e.target.value); }, 0);
+  });
+
+  document.getElementById('btn-lic-activate')?.addEventListener('click', activateLicense);
+  document.getElementById('btn-lic-revalidate')?.addEventListener('click', () => refreshLicenseUI({ force: true, toast: 'Revalidando…' }));
+  document.getElementById('btn-lic-retry-net')?.addEventListener('click', () => refreshLicenseUI({ force: true }));
+  document.getElementById('btn-lic-retry-srv')?.addEventListener('click', () => refreshLicenseUI({ force: true }));
+
+  const changeButtons = ['btn-lic-change', 'btn-lic-change-2', 'btn-lic-change-3', 'btn-lic-change-4'];
+  changeButtons.forEach(id => {
+    document.getElementById(id)?.addEventListener('click', async () => {
+      if (!confirm('Trocar a chave de licença? A chave atual será removida deste dispositivo.')) return;
+      await clearLicense();
+      await refreshLicenseUI({ silent: true });
+      switchTab('license');
+    });
+  });
+}
+
+async function activateLicense() {
+  const input    = document.getElementById('lic-input');
+  const btn      = document.getElementById('btn-lic-activate');
+  const hint     = document.getElementById('lic-input-hint');
+  const rawValue = input.value.trim();
+  const norm     = normalizeKey(rawValue);
+
+  hint.textContent = '';
+  hint.classList.remove('error');
+
+  if (!isKeyFormatValid(norm)) {
+    hint.textContent = 'Formato inválido. Use ISI-XXXX-XXXX-XXXX-XXXX';
+    hint.classList.add('error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Validando…';
+
+  try {
+    await saveLicenseKey(norm);
+  } catch (_) {
+    hint.textContent = 'Formato inválido.';
+    hint.classList.add('error');
+    btn.disabled = false;
+    btn.textContent = 'Ativar';
+    return;
+  }
+
+  const result = await validateLicense({ force: true });
+  renderLicenseScreen(result);
+  applyLicenseGating(result);
+
+  btn.disabled = false;
+  btn.textContent = 'Ativar';
+  input.value = '';
+}
+
+async function refreshLicenseUI({ force = false, silent = false, toast = null } = {}) {
+  if (toast) showToast('license-toast', toast, 'success');
+
+  let result;
+  if (force) {
+    result = await validateLicense({ force: true });
+  } else if (silent) {
+    // Lê cache primeiro pra pintar UI rapidamente, depois bate no servidor em background
+    const cached = await getCurrentStatus();
+    renderLicenseScreen(cached);
+    applyLicenseGating(cached);
+    result = await validateLicense({ silent: true });
+  } else {
+    result = await validateLicense({});
+  }
+
+  renderLicenseScreen(result);
+  applyLicenseGating(result);
+  return result;
+}
+
+function renderLicenseScreen(result) {
+  _lastLicenseStatus = result;
+  if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+
+  const status = result?.status || 'no_key';
+  const ids = ['no_key', 'valid', 'expired', 'blocked', 'invalid', 'rate_limited', 'network_error', 'server_error'];
+
+  // hwid_mismatch e unknown caem no fluxo invalid
+  let screenKey = status;
+  if (status === 'hwid_mismatch') screenKey = 'invalid';
+  if (status === 'unknown')       screenKey = 'no_key';
+  if (!ids.includes(screenKey))   screenKey = 'invalid';
+
+  ids.forEach(id => {
+    const el = document.getElementById(`lic-screen-${id}`);
+    if (el) el.classList.toggle('hidden', id !== screenKey);
+  });
+
+  // Detalhes específicos por tela
+  if (screenKey === 'valid' && result.expires_at) {
+    document.getElementById('lic-expires').textContent =
+      'Expira em ' + formatDateBR(result.expires_at);
+  }
+
+  if (screenKey === 'expired' && result.expires_at) {
+    document.getElementById('lic-expired-text').textContent =
+      `Sua licença expirou em ${formatDateBR(result.expires_at)}. Renove pra continuar usando.`;
+  }
+
+  // URLs dinâmicas (subscription_url / support_url) — escondem botão se null/undefined
+  const renewBtn = document.getElementById('btn-lic-renew');
+  if (renewBtn) {
+    const url = result?.subscription_url ?? null;
+    if (url) {
+      renewBtn.classList.remove('hidden');
+      renewBtn.onclick = () => chrome.tabs.create({ url });
+    } else {
+      renewBtn.classList.add('hidden');
+    }
+  }
+
+  const supportBtn = document.getElementById('btn-lic-support');
+  if (supportBtn) {
+    const url = result?.support_url ?? null;
+    if (url) {
+      supportBtn.classList.remove('hidden');
+      supportBtn.onclick = () => chrome.tabs.create({ url });
+    } else {
+      supportBtn.classList.add('hidden');
+    }
+  }
+
+  // Countdown pra rate_limited
+  if (screenKey === 'rate_limited') {
+    const secs = Math.max(1, parseInt(result.retry_after_s || 60, 10));
+    let remaining = secs;
+    const span = document.getElementById('lic-countdown');
+    if (span) span.textContent = remaining;
+    _countdownInterval = setInterval(() => {
+      remaining -= 1;
+      if (span) span.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(_countdownInterval);
+        _countdownInterval = null;
+        refreshLicenseUI({ force: true });
+      }
+    }, 1000);
+  }
+}
+
+// Aplica/remove o gate visual nas outras abas
+function applyLicenseGating(result) {
+  const valid = result?.status === 'valid';
+  const banner = document.getElementById('lic-banner');
+  const actionButtons = [
+    'btn-start', 'btn-start-list',
+    'btn-export-settings', 'btn-export-blacklist', 'btn-export-graylist',
+    'btn-save-settings', 'btn-save-messages',
+  ];
+
+  if (valid) {
+    banner?.classList.add('hidden');
+    actionButtons.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.remove('disabled-license');
+    });
+    document.querySelectorAll('.btn-send-dm, .btn-post-comment, .btn-webhook, .btn-clear-all, .btn-clear-history').forEach(b => b.classList.remove('disabled-license'));
+  } else {
+    banner?.classList.remove('hidden');
+    actionButtons.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.add('disabled-license');
+    });
+    document.querySelectorAll('.btn-send-dm, .btn-post-comment, .btn-webhook').forEach(b => b.classList.add('disabled-license'));
+
+    // Se está na primeira vez sem chave OU acabou de invalidar, vai pra aba Licença
+    const onLicenseTab = document.getElementById('tab-license')?.classList.contains('active');
+    if (!onLicenseTab && result?.status && result.status !== 'unknown') {
+      switchTab('license');
+    }
+  }
+}
+
+// Chamado quando uma ação retorna license_required do background
+function onLicenseDeniedDuringAction(statusFromBg) {
+  refreshLicenseUI({ force: true }).then(result => {
+    // Se a UI já mostra o motivo, ótimo. Senão, força ir pra aba Licença.
+    switchTab('license');
+  });
+}
+
+function formatDateBR(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch (_) { return iso; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -71,6 +71,19 @@ Sends to a Supabase Edge Function. Key field mappings:
 - `icebreaker_message` / `hook_message` → the two generated DM messages
 - `temperature` → derived from `pontuacao_icp`: ≥9=quente, ≥7=morno, else frio
 
+### License module (`sync.js`)
+
+License validation runs against the isipanel endpoint `POST https://api.isitools.com.br/v1/license/validate`. The module name `sync` and function names (`__sync`, `__fp`, `__endpoint`) are intentionally inconspicuous — this is cosmetic anti-tampering only; the JS is inspectable.
+
+- **HWID** = `SHA-256(device_uuid)` where `device_uuid = crypto.randomUUID()` is generated once and stored in `chrome.storage.local`. Persists across "Trocar chave"; cleared only on extension reinstall.
+- **Validation triggers**: (a) every gated action click via `gateAction()` — force fresh fetch; (b) SW boot — `silent: true`, uses cache if fresh; (c) `chrome.alarms` `licenseCheck` every 360min; (d) manual "Revalidar" button.
+- **Single-flight**: `_inflight` promise prevents concurrent validations.
+- **Cache**: stores only `valid` responses in `license_status`. Any non-valid response **wipes the cache** immediately. Cache `grace_until` is consulted **only** when the fetch fails with HTTP 5xx/timeout (server unavailable, not network error).
+- **Gated actions** (in `route()` switch in `background.js`): `START_PROSPECTING`, `START_LIST_PROSPECTING`, `SEND_DM`, `POST_COMMENT`, `SEND_WEBHOOK`. PROFILE_DATA is NOT gated (would hit rate limit at 60/min). Per-profile within an action uses the gate result from the action click.
+- **Revogação durante prospecção**: alarm/boot detects non-valid → `__interruptOnRevocation` sets `stats.active=false`, sends `STOP_COLLECTION` to content, broadcasts `LICENSE_REVOKED`. Popup redirects to Licença tab and resets buttons.
+- **Storage keys**: `device_uuid` (forever), `license_key` (cleared on "Trocar chave"), `license_status` (cleared on "Trocar chave" or non-valid response).
+- **URL endpoint** is built at runtime via char-code array — minor obfuscation; not security.
+
 ### Settings object shape
 
 ```js
