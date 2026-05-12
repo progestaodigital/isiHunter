@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gerar Ícones — IsiHunter</title>
+  <style>
+    body { font-family: sans-serif; padding: 32px; background: #0e0e10; color: #e4e4e7; }
+    h2 { margin-bottom: 20px; }
+    .previews { display: flex; gap: 24px; align-items: flex-end; margin-bottom: 24px; }
+    canvas { border-radius: 12px; image-rendering: pixelated; }
+    .group { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: #71717a; }
+    button {
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      color: #fff; border: none; border-radius: 8px;
+      padding: 12px 24px; font-size: 15px; font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { opacity: .85; }
+    p { font-size: 13px; color: #71717a; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h2>🎨 Gerar Ícones para a Extensão IsiHunter</h2>
+
+  <div class="previews">
+    <div class="group"><canvas id="c128" width="128" height="128"></canvas><span>128×128</span></div>
+    <div class="group"><canvas id="c48"  width="48"  height="48"></canvas><span>48×48</span></div>
+    <div class="group"><canvas id="c16"  width="16"  height="16"></canvas><span>16×16</span></div>
+  </div>
+
+  <button id="btn-download">⬇ Baixar os 3 ícones PNG</button>
+  <p>Salve os arquivos baixados na pasta <code>icons/</code> da extensão.</p>
+
+  <script>
+    function drawIcon(canvas) {
+      const s = canvas.width;
+      const ctx = canvas.getContext('2d');
+
+      // Fundo com gradiente
+      const grad = ctx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, '#7c3aed');
+      grad.addColorStop(1, '#db2777');
+      const r = s * 0.18;
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(s - r, 0);
+      ctx.quadraticCurveTo(s, 0, s, r);
+      ctx.lineTo(s, s - r);
+      ctx.quadraticCurveTo(s, s, s - r, s);
+      ctx.lineTo(r, s);
+      ctx.quadraticCurveTo(0, s, 0, s - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Letra "I"
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.font = `bold ${Math.round(s * 0.62)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('I', s / 2, s / 2 + s * 0.03);
+
+      // Ponto decorativo (símbolo de radar/search)
+      const dotR = s * 0.065;
+      const dotX = s * 0.68;
+      const dotY = s * 0.28;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fill();
+    }
+
+    ['c128','c48','c16'].forEach(id => drawIcon(document.getElementById(id)));
+
+    document.getElementById('btn-download').addEventListener('click', () => {
+      [
+        { id: 'c128', name: 'icon128.png' },
+        { id: 'c48',  name: 'icon48.png'  },
+        { id: 'c16',  name: 'icon16.png'  },
+      ].forEach(({ id, name }) => {
+        const a = document.createElement('a');
+        a.download = name;
+        a.href = document.getElementById(id).toDataURL('image/png');
+        a.click();
+      });
+    });
+  </script>
+</body>
+</html>

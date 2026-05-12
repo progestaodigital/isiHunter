@@ -1,0 +1,29 @@
+# Arquivos do SO
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Builds e pacotes da extensão
+*.crx
+*.pem
+*.zip
+dist/
+build/
+
+# Logs e temporários
+*.log
+*.tmp
+.cache/
+
+# Dependências (caso adicione um build step no futuro)
+node_modules/
+
+# Memória local do Claude Code (não deve ir pro repo)
+.claude/
