@@ -86,6 +86,15 @@ export async function saveStats(partial) {
   await set({ [KEY_STATS]: { ...current, ...partial } });
 }
 
+// Increment atômico de um campo numérico de stats. Usado para telemetria
+// (descartados_local, aprovados_local, mensagens_geradas, bloqueio_ocorrencias).
+export async function incrementStat(field, by = 1) {
+  const current = await getStats();
+  const next = (current[field] || 0) + by;
+  await set({ [KEY_STATS]: { ...current, [field]: next } });
+  return next;
+}
+
 // ─── Progress log (últimas 100 entradas) ──────────────────────────────────
 
 export async function getLog() {

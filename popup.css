@@ -366,7 +366,9 @@ body {
 }
 .stat-chip { display: flex; flex-direction: column; align-items: center; min-width: 50px; }
 .stat-num { font-size: 1.15rem; font-weight: 700; color: var(--text); }
-.stat-num.approved { color: var(--green); }
+.stat-num.approved  { color: var(--green); }
+.stat-num.discarded { color: var(--text-dim); }
+.stat-num.messages  { color: var(--accent); }
 .stat-label { font-size: .65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
 .stat-divider { width: 1px; height: 28px; background: var(--border); }
 
@@ -581,6 +583,7 @@ body {
   border-radius: var(--radius);
   overflow: hidden;
   transition: border-color .2s;
+  flex-shrink: 0;       /* impede compressão em flex-column — força scroll do container */
 }
 .profile-card:hover { border-color: var(--accent); }
 
@@ -802,6 +805,7 @@ body {
   border-radius: var(--radius-sm);
   font-size: .78rem;
   animation: fadeIn .2s ease;
+  flex-shrink: 0;       /* mesma razão dos cards de Aprovados — sem compressão em flex-column */
 }
 .history-row.aprovado  { border-left: 3px solid var(--green); }
 .history-row.descartado{ border-left: 3px solid var(--border); }
@@ -961,3 +965,244 @@ button.disabled-license {
   cursor: not-allowed !important;
   pointer-events: none;
 }
+
+/* ─── Banners de status de coleta e bloqueio ─────────────────────────── */
+.collection-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin: 8px 0;
+  background: rgba(245, 158, 11, .12);
+  border: 1px solid rgba(245, 158, 11, .35);
+  border-radius: 8px;
+  color: #fbbf24;
+  font-size: .78rem;
+  line-height: 1.4;
+}
+
+.block-banner {
+  padding: 12px;
+  margin: 8px 0;
+  background: rgba(239, 68, 68, .1);
+  border: 1px solid rgba(239, 68, 68, .35);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.block-banner.block-definitive {
+  background: rgba(239, 68, 68, .18);
+  border-color: rgba(239, 68, 68, .55);
+}
+
+.block-banner-title {
+  font-size: .85rem;
+  margin-bottom: 4px;
+}
+
+.block-banner-msg {
+  color: rgba(252, 165, 165, .85);
+  margin-bottom: 6px;
+}
+
+.block-banner-countdown {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fca5a5;
+  text-align: center;
+  letter-spacing: 0.05em;
+  padding: 6px 0;
+}
+
+/* ─── Bulk actions na aba Lista ───────────────────────────────────────── */
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--accent-dim, rgba(168, 85, 247, .08));
+  border: 1px solid rgba(168, 85, 247, .25);
+  border-radius: 6px;
+}
+
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .78rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.bulk-select-all input { margin: 0; cursor: pointer; }
+
+/* Checkbox de seleção no card */
+.card-select {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent, #a855f7);
+}
+
+.profile-card { position: relative; }
+
+/* Badge "Sem mensagens" no card */
+.msg-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .68rem;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(113, 113, 122, .12);
+  color: var(--text-dim);
+}
+
+.msg-status-badge.has-msg {
+  background: rgba(34, 197, 94, .12);
+  color: var(--green);
+}
+
+/* Botão "Gerar mensagens" individual */
+.btn-generate-msg {
+  background: linear-gradient(135deg, rgba(168, 85, 247, .15), rgba(236, 72, 153, .15));
+  border: 1px solid rgba(168, 85, 247, .35);
+  color: #d8b4fe;
+}
+
+.btn-generate-msg:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(168, 85, 247, .25), rgba(236, 72, 153, .25));
+}
+
+/* Grupo de actions no header de listas */
+.list-header-actions { display: flex; gap: 10px; align-items: center; }
+
+/* Toolbar de sort/filter na aba Aprovados */
+.list-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.list-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.list-toolbar-label {
+  color: var(--text-dim);
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  min-width: 52px;
+}
+.chip-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: .7rem;
+  font-family: inherit;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.chip-btn:hover { color: var(--text); border-color: var(--accent); }
+.chip-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Contatos extraídos no card de perfil */
+.contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.contact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .72rem;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, .03);
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .15s, border-color .15s;
+  user-select: text;
+}
+
+.contact-badge:hover { background: rgba(255, 255, 255, .07); border-color: var(--accent); }
+
+.contact-badge.email    { color: #93c5fd; }
+.contact-badge.whatsapp { color: #86efac; border-color: rgba(34, 197, 94, .35); }
+.contact-badge.phone    { color: #fbbf24; }
+
+/* Motivo do descarte na lista de Histórico */
+.history-motivo {
+  font-size: .7rem;
+  color: rgba(239, 68, 68, .75);
+  margin-top: 2px;
+  font-style: italic;
+}
+
+/* Breakdown do score + métricas do perfil */
+.card-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, .025);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .76rem;
+}
+
+.bd-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bd-row span { color: var(--text-dim); }
+.bd-row strong { color: var(--text); font-weight: 600; }
+
+/* Log entries novos */
+.log-entry.local_approved { background: rgba(34, 197, 94, .06); color: var(--green); }
+.local_approved .log-dot  { background: var(--green); }
+.log-entry.filter_reject  { color: var(--text-dim); }
+.filter_reject .log-dot   { background: var(--text-dim); }
+.log-entry.ig_block_paused,
+.log-entry.ig_block_definitive {
+  background: rgba(239, 68, 68, .08);
+  color: var(--red);
+  font-weight: 600;
+}
+.ig_block_paused .log-dot,
+.ig_block_definitive .log-dot { background: var(--red); }
+.log-entry.ig_block_resumed,
+.log-entry.hashtag_start,
+.log-entry.hashtag_done {
+  color: var(--accent);
+}
+.ig_block_resumed .log-dot,
+.hashtag_start .log-dot,
+.hashtag_done .log-dot { background: var(--accent); }

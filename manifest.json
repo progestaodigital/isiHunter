@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IsiHunter - Prospecção Instagram",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "Prospecção inteligente de clientes no Instagram com qualificação por IA",
 
   "permissions": ["storage", "tabs", "activeTab", "scripting", "alarms"],

@@ -12,10 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await restoreState();
   initForms();
-  initMessages();
   initBackup();
   initProspecting();
   initList();
+  initBulkActions();
   initHistory();
   initLicense();
   listenForProgress();
@@ -49,65 +49,122 @@ function switchTab(name) {
 async function loadSettings() {
   const cfg = await getSettings();
   [
-    'icp', 'produto', 'instrucaoAbordagem', 'hashtags', 'idiomaAlvo',
-    'pontuacaoMinima', 'metaPerfis', 'openaiKey',
-    'delayMinPerfil', 'delayMaxPerfil',
-    'pausaMinGrupo', 'pausaMaxGrupo', 'tamanhoGrupo',
+    // Mensagens
+    'icp', 'produto', 'instrucaoAbordagem', 'openaiKey', 'promptIcebreaker', 'promptHook',
+    // Webhook
     'webhookEndpoint', 'webhookApiKey', 'webhookFunnel', 'webhookStage', 'webhookTags',
+    // Avançado (anti-detecção)
+    'delayMinPerfil', 'delayMaxPerfil', 'pausaMinGrupo', 'pausaMaxGrupo', 'tamanhoGrupo',
+    // Fontes de busca
+    'fonteHashtagLista', 'fonteSeguidoresPerfil', 'fonteEngajamentoPerfil', 'fonteEngajamentoNPosts', 'fontePalavrasChaveLista',
+    // Filtros pré-qualificação
+    'filtroSeguidoresMin', 'filtroSeguidoresMax', 'filtroKeywords',
+    'filtroUltimoPostDias', 'filtroPostsMin', 'filtroPostsDias', 'filtroEngajamentoMin',
   ].forEach(id => {
     const el = document.getElementById(id);
     if (el && cfg[id] !== undefined) el.value = cfg[id];
   });
-  // Checkbox separado
-  const cbAuto = document.getElementById('webhookAuto');
-  if (cbAuto) cbAuto.checked = !!cfg.webhookAuto;
 
-  // Prompts de mensagem (aba separada)
-  const elIce  = document.getElementById('promptIcebreaker');
-  const elHook = document.getElementById('promptHook');
-  if (elIce  && cfg.promptIcebreaker !== undefined) elIce.value  = cfg.promptIcebreaker;
-  if (elHook && cfg.promptHook       !== undefined) elHook.value = cfg.promptHook;
+  // Checkboxes
+  [
+    ['webhookAuto',             cfg.webhookAuto],
+    ['fonteHashtagAtiva',       cfg.fonteHashtagAtiva !== false],   // default true
+    ['fonteSeguidoresAtiva',    cfg.fonteSeguidoresAtiva],
+    ['fonteEngajamentoAtiva',   cfg.fonteEngajamentoAtiva],
+    ['fontePalavrasChaveAtiva', cfg.fontePalavrasChaveAtiva],
+    ['extrairContatos',         cfg.extrairContatos],
+  ].forEach(([id, v]) => {
+    const cb = document.getElementById(id);
+    if (cb) cb.checked = !!v;
+  });
+
+  // Migração silenciosa: se 'hashtags' antigo tem valor mas fonteHashtagLista está vazio, herda
+  const hlNew = document.getElementById('fonteHashtagLista');
+  if (hlNew && !hlNew.value && cfg.hashtags) hlNew.value = cfg.hashtags;
 }
 
 function initForms() {
-  document.getElementById('settings-form').addEventListener('submit', async e => {
+  document.getElementById('search-form')?.addEventListener('submit', e => {
     e.preventDefault();
-    const cfg = {
-      icp:                val('icp'),
-      produto:            val('produto'),
-      instrucaoAbordagem: val('instrucaoAbordagem'),
-      hashtags:           val('hashtags'),
-      idiomaAlvo:         val('idiomaAlvo'),
-      pontuacaoMinima:    Number(val('pontuacaoMinima')) || 7,
-      metaPerfis:         Number(val('metaPerfis'))      || 20,
-      openaiKey:          val('openaiKey'),
-      delayMinPerfil:     Number(val('delayMinPerfil'))  || 3,
-      delayMaxPerfil:     Number(val('delayMaxPerfil'))  || 7,
-      pausaMinGrupo:      Number(val('pausaMinGrupo'))   || 30,
-      pausaMaxGrupo:      Number(val('pausaMaxGrupo'))   || 90,
-      tamanhoGrupo:       Number(val('tamanhoGrupo'))    || 10,
-      webhookEndpoint:    val('webhookEndpoint'),
-      webhookApiKey:      val('webhookApiKey'),
-      webhookFunnel:      val('webhookFunnel'),
-      webhookStage:       val('webhookStage'),
-      webhookTags:        val('webhookTags'),
-      webhookAuto:        document.getElementById('webhookAuto')?.checked || false,
-    };
-    await saveSettings(cfg);
-    showToast('settings-toast', 'Configurações salvas!', 'success');
+    saveSearchSettings();
+  });
+  document.getElementById('messages-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    saveMessagesSettings();
+  });
+  document.getElementById('webhook-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    saveWebhookSettings();
+  });
+  document.getElementById('settings-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    saveAdvancedSettings();
   });
 }
 
-function initMessages() {
-  document.getElementById('messages-form')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const cfg = await getSettings();
-    cfg.promptIcebreaker = val('promptIcebreaker');
-    cfg.promptHook       = val('promptHook');
-    await saveSettings(cfg);
-    showToast('messages-toast', 'Prompts salvos!', 'success');
-  });
+// Cada save lê o cfg completo, sobrescreve só os campos da própria aba, e salva.
+// Preserva os outros campos mesmo que o usuário tenha mudado entre abas sem salvar.
+
+async function saveSearchSettings() {
+  const cfg = await getSettings();
+  cfg.fonteHashtagAtiva       = document.getElementById('fonteHashtagAtiva')?.checked ?? true;
+  cfg.fonteHashtagLista       = val('fonteHashtagLista');
+  cfg.fonteSeguidoresAtiva    = document.getElementById('fonteSeguidoresAtiva')?.checked || false;
+  cfg.fonteSeguidoresPerfil   = val('fonteSeguidoresPerfil').replace(/^@/, '');
+  cfg.fonteEngajamentoAtiva   = document.getElementById('fonteEngajamentoAtiva')?.checked || false;
+  cfg.fonteEngajamentoPerfil  = val('fonteEngajamentoPerfil').replace(/^@/, '');
+  cfg.fonteEngajamentoNPosts  = Number(val('fonteEngajamentoNPosts')) || 12;
+  cfg.fontePalavrasChaveAtiva = document.getElementById('fontePalavrasChaveAtiva')?.checked || false;
+  cfg.fontePalavrasChaveLista = val('fontePalavrasChaveLista');
+  cfg.filtroSeguidoresMin     = val('filtroSeguidoresMin');
+  cfg.filtroSeguidoresMax     = val('filtroSeguidoresMax');
+  cfg.filtroKeywords          = val('filtroKeywords');
+  cfg.filtroUltimoPostDias    = val('filtroUltimoPostDias');
+  cfg.filtroPostsMin          = val('filtroPostsMin');
+  cfg.filtroPostsDias         = val('filtroPostsDias');
+  cfg.filtroEngajamentoMin    = val('filtroEngajamentoMin');
+  await saveSettings(cfg);
+  showToast('search-toast', 'Configurações de busca salvas!', 'success');
 }
+
+async function saveMessagesSettings() {
+  const cfg = await getSettings();
+  cfg.icp                = val('icp');
+  cfg.produto            = val('produto');
+  cfg.instrucaoAbordagem = val('instrucaoAbordagem');
+  cfg.openaiKey          = val('openaiKey');
+  cfg.promptIcebreaker   = val('promptIcebreaker');
+  cfg.promptHook         = val('promptHook');
+  await saveSettings(cfg);
+  showToast('messages-toast', 'Mensagens salvas!', 'success');
+  // Atualiza o estado do bulk-generate (pode ter ativado/desativado a key OpenAI)
+  if (document.getElementById('tab-list')?.classList.contains('active')) refreshList();
+}
+
+async function saveWebhookSettings() {
+  const cfg = await getSettings();
+  cfg.webhookEndpoint = val('webhookEndpoint');
+  cfg.webhookApiKey   = val('webhookApiKey');
+  cfg.webhookFunnel   = val('webhookFunnel');
+  cfg.webhookStage    = val('webhookStage');
+  cfg.webhookTags     = val('webhookTags');
+  cfg.webhookAuto     = document.getElementById('webhookAuto')?.checked || false;
+  await saveSettings(cfg);
+  showToast('webhook-toast', 'Webhook salvo!', 'success');
+}
+
+async function saveAdvancedSettings() {
+  const cfg = await getSettings();
+  cfg.delayMinPerfil   = Number(val('delayMinPerfil')) || 3;
+  cfg.delayMaxPerfil   = Number(val('delayMaxPerfil')) || 7;
+  cfg.pausaMinGrupo    = Number(val('pausaMinGrupo'))  || 30;
+  cfg.pausaMaxGrupo    = Number(val('pausaMaxGrupo'))  || 90;
+  cfg.tamanhoGrupo     = Number(val('tamanhoGrupo'))   || 10;
+  cfg.extrairContatos  = document.getElementById('extrairContatos')?.checked || false;
+  await saveSettings(cfg);
+  showToast('settings-toast', 'Configurações avançadas salvas!', 'success');
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  EXPORT / IMPORT CONFIGURAÇÕES
@@ -293,6 +350,16 @@ async function startProspecting() {
   btnStart.disabled = true;
 
   hideError();
+  hideBlockBanner();
+  hideBlockDefinitiveBanner();
+
+  // Validação client-side antes de mandar pro bg (UX mais rápido)
+  const validationError = await validateSearchConfig();
+  if (validationError) {
+    showError(validationError);
+    btnStart.disabled = false;
+    return;
+  }
 
   const res = await sendToBg({ type: 'START_PROSPECTING' });
   if (res?.ok === false) {
@@ -306,7 +373,49 @@ async function startProspecting() {
   btnStop.classList.remove('hidden');
   showStatsRow();
   showLogHeader();
+  showCollectionBanner();
   clearLogUI();
+}
+
+// Valida configuração de busca client-side antes de iniciar.
+// Retorna null se OK ou string de erro pra mostrar no banner.
+async function validateSearchConfig() {
+  const cfg = await getSettings();
+  const errors = [];
+  const handleRe = /^[a-zA-Z0-9._]{1,30}$/;
+  let anyActive = false;
+
+  if (cfg.fonteHashtagAtiva !== false && cfg.fonteHashtagLista?.trim()) {
+    anyActive = true;
+  }
+
+  if (cfg.fonteSeguidoresAtiva) {
+    const perfil = (cfg.fonteSeguidoresPerfil || '').trim().replace(/^@/, '');
+    if (!perfil) errors.push('Fonte "Seguidores": preencha o @perfil');
+    else if (!handleRe.test(perfil)) errors.push(`Fonte "Seguidores": "${perfil}" não é um username válido do Instagram`);
+    else anyActive = true;
+  }
+
+  if (cfg.fonteEngajamentoAtiva) {
+    const perfil = (cfg.fonteEngajamentoPerfil || '').trim().replace(/^@/, '');
+    const nPosts = Number(cfg.fonteEngajamentoNPosts) || 12;
+    if (!perfil) errors.push('Fonte "Engajamento": preencha o @perfil');
+    else if (!handleRe.test(perfil)) errors.push(`Fonte "Engajamento": "${perfil}" não é um username válido`);
+    else if (nPosts < 1 || nPosts > 12) errors.push('Fonte "Engajamento": N posts deve estar entre 1 e 12');
+    else anyActive = true;
+  }
+
+  if (cfg.fontePalavrasChaveAtiva) {
+    const keywords = (cfg.fontePalavrasChaveLista || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!keywords.length) errors.push('Fonte "Palavras-chave": preencha ao menos 1 termo');
+    else anyActive = true;
+  }
+
+  if (!anyActive && !errors.length) {
+    errors.push('Configure ao menos uma fonte de busca na aba Busca');
+  }
+
+  return errors.length ? errors.join(' · ') : null;
 }
 
 async function stopProspecting() {
@@ -318,6 +427,7 @@ async function stopProspecting() {
   btnStop.classList.add('hidden');
   btnStart.classList.remove('hidden');
   btnStart.disabled = false;
+  hideCollectionBanner();
 
   addLogEntry({ action: 'stopped', message: 'Prospecção interrompida pelo usuário.' });
 }
@@ -329,17 +439,25 @@ async function restoreState() {
   if (stats.approved > 0 || stats.processed > 0) {
     showStatsRow();
     showLogHeader();
-    updateStatsUI(stats.processed, stats.approved);
+    updateStatsUI({
+      processed:   stats.processed,
+      approved:    stats.approved,
+      descartados: stats.descartados_local,
+      mensagens:   stats.mensagens_geradas,
+    });
   }
 
-  if (stats.active) {
-    // Verifica com o background se a coleta realmente está viva ou se é estado zumbi
-    const check = await sendToBg({ type: 'CHECK_ACTIVE' });
-    if (check?.active) {
-      document.getElementById('btn-start').classList.add('hidden');
-      document.getElementById('btn-stop').classList.remove('hidden');
-    }
-    // Se não está ativo de verdade, o background já reseta stats.active — botão Iniciar fica visível
+  // Verifica com o background o estado real (active / blocked / blockedDefinitive / zumbi)
+  const check = await sendToBg({ type: 'CHECK_ACTIVE' });
+  if (check?.blocked && check?.until) {
+    // Pausa em curso por bloqueio do IG — mostra countdown
+    showBlockBanner('Coleta pausada pelo bloqueio anti-bot do Instagram. Retomando automaticamente.', check.until);
+  } else if (check?.blockedDefinitive) {
+    showBlockDefinitiveBanner(`Instagram bloqueou 2x nesta sessão. Aguarde e clique em "Reiniciar Coleta".`);
+  } else if (check?.active) {
+    document.getElementById('btn-start').classList.add('hidden');
+    document.getElementById('btn-stop').classList.remove('hidden');
+    showCollectionBanner();
   }
 
   // Recarrega log salvo
@@ -356,13 +474,50 @@ async function restoreState() {
 // ─── Listener de atualizações do background ──────────────────────────────
 function listenForProgress() {
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === 'PROGRESS')         handleProgress(msg);
-    if (msg.type === 'DM_SENT')          handleDmSent(msg.username);
-    if (msg.type === 'COMMENT_POSTED')   handleCommentPosted(msg.username);
-    if (msg.type === 'WEBHOOK_SENT')     handleWebhookSent(msg.username);
-    if (msg.type === 'WEBHOOK_ERROR')    handleWebhookError(msg.username, msg.error);
-    if (msg.type === 'LICENSE_REVOKED')  handleLicenseRevoked(msg.license_status);
+    if (msg.type === 'PROGRESS')              handleProgress(msg);
+    if (msg.type === 'DM_SENT')               handleDmSent(msg.username);
+    if (msg.type === 'COMMENT_POSTED')        handleCommentPosted(msg.username);
+    if (msg.type === 'WEBHOOK_SENT')          handleWebhookSent(msg.username);
+    if (msg.type === 'WEBHOOK_ERROR')         handleWebhookError(msg.username, msg.error);
+    if (msg.type === 'LICENSE_REVOKED')       handleLicenseRevoked(msg.license_status);
+    if (msg.type === 'IG_BLOCK_PAUSED')       handleBlockPaused(msg);
+    if (msg.type === 'IG_BLOCK_DEFINITIVE')   handleBlockDefinitive(msg);
+    if (msg.type === 'IG_BLOCK_RESUMED')      handleBlockResumed();
+    if (msg.type === 'MESSAGES_GENERATING')   handleMessagesGenerating(msg.username);
+    if (msg.type === 'MESSAGES_GENERATED')    handleMessagesGenerated(msg.username);
+    if (msg.type === 'MESSAGES_FAILED')       handleMessagesFailed(msg.username, msg.error);
   });
+}
+
+// ─── Handlers dos novos eventos ───────────────────────────────────────────
+function handleBlockPaused({ message, until }) {
+  showBlockBanner(message || 'Coleta pausada por 2h.', until);
+  resetProspectingButtons();
+}
+
+function handleBlockDefinitive({ message }) {
+  showBlockDefinitiveBanner(message || 'Instagram bloqueou 2x — pausa definitiva.');
+  resetProspectingButtons();
+}
+
+function handleBlockResumed() {
+  hideBlockBanner();
+  showCollectionBanner();
+  document.getElementById('btn-start').classList.add('hidden');
+  document.getElementById('btn-stop').classList.remove('hidden');
+}
+
+function handleMessagesGenerating(username) {
+  // Apenas visual — o card fica num estado "gerando" via PROGRESS log
+}
+
+function handleMessagesGenerated(username) {
+  // Re-renderiza pra mostrar as novas mensagens no card
+  if (document.getElementById('tab-list')?.classList.contains('active')) refreshList();
+}
+
+function handleMessagesFailed(username, error) {
+  showError(`Falha ao gerar mensagens para @${username}: ${error}`);
 }
 
 function handleLicenseRevoked(status) {
@@ -373,10 +528,17 @@ function handleLicenseRevoked(status) {
 }
 
 function handleProgress(msg) {
-  const { action, username, pontuacao, processed, approved, error } = msg;
+  const { action, username, pontuacao, score, processed, approved, error, reason } = msg;
 
-  // Atualiza contadores
-  if (processed !== undefined) updateStatsUI(processed, approved || 0);
+  // Atualiza contadores (a partir das stats spreadadas na msg pelo bg)
+  if (processed !== undefined) {
+    updateStatsUI({
+      processed,
+      approved:    approved || 0,
+      descartados: msg.descartados_local,
+      mensagens:   msg.mensagens_geradas,
+    });
+  }
 
   switch (action) {
     case 'evaluating':
@@ -389,7 +551,24 @@ function handleProgress(msg) {
         message: `@${username} — ${pontuacao}/10 — Aprovado ✓`,
       });
       updateListBadge(approved);
-      // Atualiza histórico se a aba estiver visível
+      if (document.getElementById('tab-history')?.classList.contains('active')) refreshHistory();
+      break;
+
+    case 'local_approved':
+      addLogEntry({
+        action: 'local_approved',
+        message: `@${username} — score ${score}/10 — Aprovado pelos filtros ✓`,
+      });
+      updateListBadge(approved);
+      if (document.getElementById('tab-history')?.classList.contains('active')) refreshHistory();
+      if (document.getElementById('tab-list')?.classList.contains('active')) refreshList();
+      break;
+
+    case 'filter_reject':
+      addLogEntry({
+        action: 'filter_reject',
+        message: `@${username} — descartado: ${filterReasonLabel(reason, msg.detail)}`,
+      });
       if (document.getElementById('tab-history')?.classList.contains('active')) refreshHistory();
       break;
 
@@ -401,16 +580,69 @@ function handleProgress(msg) {
       if (document.getElementById('tab-history')?.classList.contains('active')) refreshHistory();
       break;
 
+    case 'hashtag_start':
+      addLogEntry({
+        action: 'hashtag_start',
+        message: `▶ Iniciando #${msg.hashtag} (${msg.idx}/${msg.total})`,
+      });
+      showCollectionBanner();
+      break;
+
+    case 'hashtag_done':
+      addLogEntry({
+        action: 'hashtag_done',
+        message: `✓ #${msg.hashtag} concluída${msg.next ? `. Próxima: #${msg.next}` : ''}`,
+      });
+      break;
+
+    case 'source_start':
+      addLogEntry({
+        action: 'hashtag_start',
+        message: sourceStartLabel(msg),
+      });
+      showCollectionBanner();
+      break;
+
+    case 'source_done':
+      addLogEntry({
+        action: 'hashtag_done',
+        message: sourceDoneLabel(msg),
+      });
+      break;
+
+    case 'ig_block_paused':
+      addLogEntry({
+        action: 'ig_block_paused',
+        message: `⛔ ${msg.message || reason}. Pausa de 2h.`,
+      });
+      break;
+
+    case 'ig_block_definitive':
+      addLogEntry({
+        action: 'ig_block_definitive',
+        message: `🛑 Bloqueio definitivo (2x): ${msg.message || reason}. Reinicie manualmente.`,
+      });
+      break;
+
+    case 'ig_block_resumed':
+      addLogEntry({
+        action: 'ig_block_resumed',
+        message: '▶ Coleta retomada após pausa de 2h',
+      });
+      break;
+
     case 'complete':
       addLogEntry({
         action: 'complete',
         message: `Meta atingida! ${approved} perfis aprovados. Prospecção encerrada.`,
       });
       resetProspectingButtons();
+      hideCollectionBanner();
       break;
 
     case 'stopped':
       resetProspectingButtons();
+      hideCollectionBanner();
       break;
 
     case 'long_pause':
@@ -418,10 +650,6 @@ function handleProgress(msg) {
         action: 'evaluating',
         message: `⏸ Pausa longa: ${msg.pausaSeg}s (anti-detecção)`,
       });
-      break;
-
-    case 'idioma_ignorado':
-      addLogEntry({ action: 'idioma_ignorado', message: `@${username} — idioma ignorado (${msg.idioma || '?'})` });
       break;
 
     case 'checking':
@@ -457,15 +685,62 @@ function handleProgress(msg) {
       break;
 
     case 'collection_done':
-      addLogEntry({ action: 'collection_done', message: `Prospecção encerrada: sem mais perfis na hashtag. ${msg.approved || 0} aprovados.` });
+      addLogEntry({ action: 'collection_done', message: `Prospecção encerrada. ${msg.approved || 0} aprovados.` });
       resetProspectingButtons();
+      hideCollectionBanner();
       break;
 
     case 'collection_error':
       showError(error || 'Erro na coleta de dados');
       resetProspectingButtons();
+      hideCollectionBanner();
       break;
   }
+}
+
+// Mensagem de início de source (engajamento, seguidores, palavras-chave, etc)
+function sourceStartLabel(e) {
+  if (e.source === 'seguidores')     return `▶ Coletando seguidores de @${e.perfil}`;
+  if (e.source === 'engajamento')    return `▶ Coletando engajadores dos últimos ${e.nPosts || 12} posts de @${e.perfil}`;
+  if (e.source === 'palavras_chave') return `▶ Buscando perfis por palavras-chave: ${(e.keywords || []).join(', ')}`;
+  return `▶ Iniciando fonte: ${e.source}`;
+}
+
+function sourceDoneLabel(e) {
+  if (e.source === 'seguidores')     return `✓ Seguidores de @${e.perfil || ''} concluídos`;
+  if (e.source === 'engajamento')    return `✓ Engajadores de @${e.perfil || ''} concluídos`;
+  if (e.source === 'palavras_chave') return `✓ Palavras-chave concluídas (${(e.keywords || []).length} termos)`;
+  return `✓ Fonte ${e.source} concluída`;
+}
+
+// Tradução amigável de motivos de descarte de filtro — usa detail quando disponível
+function filterReasonLabel(reason, detail) {
+  if (detail) {
+    switch (reason) {
+      case 'seguidores_min':
+        return `seguidores ${fmtNumber(detail.actual)} < mín ${fmtNumber(detail.threshold)}`;
+      case 'seguidores_max':
+        return `seguidores ${fmtNumber(detail.actual)} > máx ${fmtNumber(detail.threshold)}`;
+      case 'keyword':
+        return `nenhuma palavra-chave (${(detail.keywords || []).join(', ')}) no nome/@/bio`;
+      case 'ultimo_post':
+        return `última publicação há ${detail.actual}d > limite ${detail.threshold}d`;
+      case 'frequencia':
+        return `${detail.actual} posts em ${detail.dias}d < mín ${detail.threshold}`;
+      case 'engajamento':
+        return `engajamento ${(detail.actual ?? 0).toFixed(2)}% < mín ${detail.threshold}%`;
+    }
+  }
+  // Fallback simples (sem detail)
+  const fallback = {
+    seguidores_min: 'menos seguidores que o mínimo',
+    seguidores_max: 'mais seguidores que o máximo',
+    keyword:        'sem palavra-chave no nome/@/bio',
+    ultimo_post:    'última publicação muito antiga',
+    frequencia:     'poucos posts no período',
+    engajamento:    'engajamento abaixo do mínimo',
+  };
+  return fallback[reason] || reason || 'motivo desconhecido';
 }
 
 function handleDmSent(username) {
@@ -534,6 +809,8 @@ function initHistory() {
     refreshHistory();
   });
 
+  document.getElementById('btn-export-history')?.addEventListener('click', exportHistoryCsv);
+
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -547,6 +824,37 @@ function initHistory() {
 async function refreshHistory() {
   const history = await getHistory();
   renderHistory(history);
+}
+
+async function exportHistoryCsv() {
+  if (!await gateAction()) { onLicenseDeniedDuringAction(); return; }
+  const history = await getHistory();
+  if (!history.length) {
+    showToast('license-toast', 'Histórico vazio — nada pra exportar', 'error');
+    return;
+  }
+
+  const esc = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const header = ['data', 'username', 'nome', 'seguidores', 'pontuacao', 'resultado', 'motivo', 'detalhe'];
+  const rows = history.map(h => [
+    new Date(h.ts || Date.now()).toISOString(),
+    h.username || '',
+    h.nome || '',
+    h.seguidores || '',
+    h.pontuacao ?? '',
+    h.resultado || '',
+    h.motivo || '',
+    h.motivo_detail ? JSON.stringify(h.motivo_detail) : '',
+  ].map(esc).join(','));
+
+  const csv = [header.join(','), ...rows].join('\n');
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadFile(csv, `isihunter-historico-${stamp}.csv`, 'text/csv');
 }
 
 function renderHistory(history) {
@@ -573,11 +881,17 @@ function renderHistory(history) {
     const scoreColor = scoreToColor(entry.pontuacao || 0);
     const timeAgo = formatTimeAgo(entry.ts);
 
+    // Motivo do descarte (perfis descartados) — usa motivo + motivo_detail salvos no histórico
+    const motivoLine = entry.resultado === 'descartado' && entry.motivo
+      ? `<div class="history-motivo">↳ ${escHtml(filterReasonLabel(entry.motivo, entry.motivo_detail))}</div>`
+      : '';
+
     row.innerHTML = `
       <div class="history-result">${entry.resultado === 'aprovado' ? '✓' : '✕'}</div>
       <div class="history-info">
         <div class="history-name">@${escHtml(entry.username)}${entry.nome && entry.nome !== entry.username ? ` · ${escHtml(entry.nome)}` : ''}</div>
         <div class="history-meta">${escHtml(entry.seguidores || '')} seguidores · ${timeAgo}</div>
+        ${motivoLine}
       </div>
       <div class="history-score" style="color:${scoreColor}">${entry.pontuacao ?? '—'}/10</div>
       <span class="history-tag">${entry.resultado === 'aprovado' ? 'Blacklist' : 'Graylist 30d'}</span>
@@ -610,7 +924,7 @@ function openCardDetail(card, profile) {
   const cardBody = card.querySelector('.card-body');
 
   // Preenche o cabeçalho do overlay
-  const score      = profile.pontuacao_icp || 0;
+  const score      = profile.score_local ?? profile.pontuacao_icp ?? 0;
   const scoreColor = scoreToColor(score);
   const initial    = (profile.nome || profile.username || '?')[0].toUpperCase();
 
@@ -643,8 +957,60 @@ function closeCardDetail() {
   overlay.classList.add('hidden');
 }
 
+let _listSortBy = 'score-desc';
+let _listFilter = 'all';
+
+function initListToolbar() {
+  document.querySelectorAll('[data-sort]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-sort]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _listSortBy = btn.dataset.sort;
+      refreshList();
+    });
+  });
+  document.querySelectorAll('[data-list-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-list-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _listFilter = btn.dataset.listFilter;
+      refreshList();
+    });
+  });
+}
+
+function applyListSortAndFilter(profiles) {
+  // Filtro
+  let filtered = profiles;
+  if (_listFilter === 'with-msgs') {
+    filtered = profiles.filter(p => p.mensagem_icebreaker && p.mensagem_hook);
+  } else if (_listFilter === 'without-msgs') {
+    filtered = profiles.filter(p => !p.mensagem_icebreaker || !p.mensagem_hook);
+  } else if (_listFilter === 'dm-sent') {
+    filtered = profiles.filter(p => p.status === 'mensagem_enviada');
+  } else if (_listFilter === 'with-contact') {
+    filtered = profiles.filter(p => p.contatos?.has_contact);
+  }
+
+  // Ordenação
+  const sorted = [...filtered];
+  switch (_listSortBy) {
+    case 'score-desc':
+      sorted.sort((a, b) => (b.score_local ?? b.pontuacao_icp ?? 0) - (a.score_local ?? a.pontuacao_icp ?? 0));
+      break;
+    case 'date-desc':
+      sorted.sort((a, b) => (b.coletado_em || 0) - (a.coletado_em || 0));
+      break;
+    case 'name-asc':
+      sorted.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+      break;
+  }
+  return sorted;
+}
+
 function initList() {
   document.getElementById('card-detail-back').addEventListener('click', closeCardDetail);
+  initListToolbar();
 
   document.getElementById('btn-clear-all').addEventListener('click', async () => {
     if (!confirm('Limpar todos os perfis aprovados e o log?')) return;
@@ -652,8 +1018,7 @@ function initList() {
     await refreshList();
     clearLogUI();
     updateListBadge(0);
-    document.getElementById('stat-processed').textContent = '0';
-    document.getElementById('stat-approved').textContent  = '0';
+    updateStatsUI({ processed: 0, approved: 0, descartados: 0, mensagens: 0 });
     document.getElementById('stats-row').style.display = 'none';
   });
 }
@@ -664,64 +1029,112 @@ async function refreshList() {
   renderProfiles(profiles);
 }
 
-function renderProfiles(profiles) {
-  const container = document.getElementById('profiles-list');
-  const counter   = document.getElementById('list-counter');
-  const notice    = document.getElementById('threshold-notice');
+async function renderProfiles(profiles) {
+  const container    = document.getElementById('profiles-list');
+  const counter      = document.getElementById('list-counter');
+  const bulkActions  = document.getElementById('bulk-actions');
+  const toolbar      = document.getElementById('list-toolbar');
+  const selectAll    = document.getElementById('bulk-select-all');
 
   if (profiles.length === 0) {
-    container.innerHTML = '<div class="list-empty">Nenhum perfil aprovado ainda.<br>Inicie a prospecção na aba anterior.</div>';
+    container.innerHTML = '<div class="list-empty">Nenhum perfil aprovado ainda.<br>Inicie a prospecção na aba Busca.</div>';
     counter.textContent = 'Nenhum perfil aprovado ainda';
-    notice.classList.add('hidden');
+    if (bulkActions) bulkActions.classList.add('hidden');
+    if (toolbar) toolbar.classList.add('hidden');
     return;
   }
 
-  counter.textContent = `${profiles.length} perfil${profiles.length > 1 ? 's' : ''} aprovado${profiles.length > 1 ? 's' : ''}`;
+  // Aplica sort + filter
+  const displayed = applyListSortAndFilter(profiles);
 
-  // Lê meta das settings para exibir aviso
-  getSettings().then(cfg => {
-    const meta = cfg.metaPerfis || 20;
-    notice.classList.toggle('hidden', profiles.length >= meta);
-    notice.querySelector('span') && (notice.querySelector('span').textContent =
-      `Aguardando ${meta} perfis aprovados para habilitar ações em massa.`);
-  });
+  counter.textContent = displayed.length === profiles.length
+    ? `${profiles.length} perfil${profiles.length > 1 ? 's' : ''} aprovado${profiles.length > 1 ? 's' : ''}`
+    : `${displayed.length} de ${profiles.length} (filtrados)`;
+
+  const cfg       = await getSettings();
+  const hasOpenAI = !!cfg.openaiKey?.trim();
+  _hasOpenAICached = hasOpenAI;
+
+  if (toolbar) toolbar.classList.remove('hidden');
 
   container.innerHTML = '';
-  profiles.forEach(p => container.appendChild(buildProfileCard(p)));
+  if (displayed.length === 0) {
+    container.innerHTML = '<div class="list-empty">Nenhum perfil bate com o filtro selecionado.</div>';
+  } else {
+    displayed.forEach(p => container.appendChild(buildProfileCard(p, hasOpenAI)));
+  }
+
+  // Bulk-actions: visível se há perfis; estado depende da chave OpenAI
+  if (bulkActions) bulkActions.classList.remove('hidden');
+  if (selectAll) selectAll.checked = false;
+  // Filtra _selectedUsernames pra remover usernames que não estão mais na lista
+  const validUsernames = new Set(profiles.map(p => p.username));
+  for (const u of [..._selectedUsernames]) {
+    if (!validUsernames.has(u)) _selectedUsernames.delete(u);
+  }
+  updateBulkUI();
+  const btnBulk = document.getElementById('btn-bulk-generate');
+  if (btnBulk) {
+    btnBulk.title = hasOpenAI
+      ? 'Gera quebra-gelo, gancho e comentário para os selecionados'
+      : 'Configure a chave OpenAI nas Configurações pra habilitar';
+  }
 
   // Re-aplica gate de licença em botões recém-criados
   if (_lastLicenseStatus) applyLicenseGating(_lastLicenseStatus);
 }
 
-function buildProfileCard(profile) {
+function buildProfileCard(profile, hasOpenAI = false) {
   const card = document.createElement('div');
-  card.className = 'profile-card'; // não expanded por padrão
+  card.className = 'profile-card';
   card.dataset.username = profile.username;
 
-  const score        = profile.pontuacao_icp || 0;
+  // score_local (novo pipeline) com fallback pra pontuacao_icp (modo legado / dados antigos)
+  const score        = profile.score_local ?? profile.pontuacao_icp ?? 0;
+  const breakdown    = profile.score_breakdown || {};
   const initial      = (profile.nome || profile.username || '?')[0].toUpperCase();
   const isSent       = profile.status === 'mensagem_enviada';
   const isCommented  = profile.status === 'comentario_enviado';
-  const webhookSt    = profile.webhook_status; // 'enviado' | 'erro' | undefined
-  const scoreColor = scoreToColor(score);
-  const iceText    = (profile.mensagem_icebreaker || profile.mensagem_gerada || '').trim();
-  const hookText   = (profile.mensagem_hook       || '').trim();
-  const cmmText    = (profile.comentario_gerado   || '').trim();
-  const just       = (profile.justificativa_icp || '').trim();
-  const postUrl    = profile.url_post_recente || '';
+  const webhookSt    = profile.webhook_status;
+  const scoreColor   = scoreToColor(score);
+  const iceText      = (profile.mensagem_icebreaker || profile.mensagem_gerada || '').trim();
+  const hookText     = (profile.mensagem_hook       || '').trim();
+  const cmmText      = (profile.comentario_gerado   || '').trim();
+  const just         = (profile.justificativa_icp || '').trim();
+  const postUrl      = profile.url_post_recente || '';
+  const hasMessages  = !!(iceText && hookText);
+  const isSelected   = _selectedUsernames.has(profile.username);
 
-  // Chevron SVG
+  // Métricas do perfil (novas — pipeline com filtros locais)
+  const seguidoresN  = profile.seguidores_raw;
+  const engPct       = profile.engajamento_pct;
+  const ultimoPostMs = profile.data_ultimo_post;
+  const postsCount   = Array.isArray(profile.posts_recentes) ? profile.posts_recentes.length : null;
+  const hasBreakdown = Object.keys(breakdown).length > 0;
+  const hasMetrics   = seguidoresN != null || engPct != null || ultimoPostMs != null || postsCount;
+
   const chevron = `<svg class="card-chevron" width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
     <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
   </svg>`;
 
+  const msgBadge = hasMessages
+    ? `<span class="msg-status-badge has-msg" title="Mensagens prontas">✓ msgs</span>`
+    : `<span class="msg-status-badge" title="Sem mensagens — clique em Gerar mensagens">sem msgs</span>`;
+
+  const generateBtnTitle = !hasOpenAI
+    ? 'Configure a chave OpenAI nas Configurações'
+    : 'Gera quebra-gelo, gancho e comentário via OpenAI';
+
   card.innerHTML = `
+    <input type="checkbox" class="card-select" data-username="${escHtml(profile.username)}" ${isSelected ? 'checked' : ''} />
+
     <div class="card-header">
       <div class="card-avatar">${initial}</div>
       <div class="card-info">
         <div class="card-name">${escHtml(profile.nome || profile.username)}</div>
         <div class="card-username">@${escHtml(profile.username)} · ${escHtml(profile.seguidores || '')} seguidores</div>
       </div>
+      ${msgBadge}
       <span class="score-badge" style="background:${scoreColor}22;color:${scoreColor};border:1px solid ${scoreColor}44">
         ${score}/10
       </span>
@@ -729,8 +1142,47 @@ function buildProfileCard(profile) {
     </div>
 
     <div class="card-body">
+      ${hasBreakdown ? `
+        <div class="card-section-label">📊 Análise de aprovação <span style="font-weight:400;color:var(--text-dim);font-size:.65rem">(local — zero tokens)</span></div>
+        <div class="card-breakdown">
+          <div class="bd-row"><span>Score final</span><strong style="color:${scoreColor}">${score}/10</strong></div>
+          ${breakdown.seguidores != null ? `<div class="bd-row"><span>Seguidores</span><strong>${fmtPts(breakdown.seguidores)}</strong></div>` : ''}
+          ${breakdown.recencia != null ? `<div class="bd-row"><span>Recência</span><strong>${fmtPts(breakdown.recencia)}</strong></div>` : ''}
+          ${breakdown.frequencia != null ? `<div class="bd-row"><span>Frequência</span><strong>${fmtPts(breakdown.frequencia)}</strong></div>` : ''}
+          ${breakdown.engajamento != null ? `<div class="bd-row"><span>Engajamento</span><strong>${fmtPts(breakdown.engajamento)}</strong></div>` : ''}
+        </div>
+      ` : ''}
+
+      ${hasMetrics ? `
+        <div class="card-section-label">📈 Dados coletados</div>
+        <div class="card-breakdown">
+          ${seguidoresN != null ? `<div class="bd-row"><span>Seguidores</span><strong>${fmtNumber(seguidoresN)}</strong></div>` : ''}
+          ${engPct != null ? `<div class="bd-row"><span>Engajamento médio</span><strong>${engPct.toFixed(2)}%</strong></div>` : ''}
+          ${ultimoPostMs ? `<div class="bd-row"><span>Última publicação</span><strong>${fmtDiasAtras(ultimoPostMs)}</strong></div>` : ''}
+          ${postsCount ? `<div class="bd-row"><span>Posts analisados</span><strong>${postsCount}</strong></div>` : ''}
+        </div>
+      ` : ''}
+
+      ${profile.contatos?.has_contact ? `
+        <div class="card-section-label">📇 Contatos extraídos</div>
+        <div class="contact-row">
+          ${(profile.contatos.emails || []).map(e => `
+            <span class="contact-badge email" data-copy="${escHtml(e)}" title="Clicar pra copiar">📧 ${escHtml(e)}</span>
+          `).join('')}
+          ${(profile.contatos.whatsapps || []).map(w => `
+            <a class="contact-badge whatsapp" href="https://wa.me/${escHtml(w.replace(/^\+/, ''))}" target="_blank" rel="noopener" title="Abrir WhatsApp">📱 ${escHtml(w)}</a>
+          `).join('')}
+          ${(profile.contatos.phones || []).filter(p => !(profile.contatos.whatsapps || []).includes(p)).map(p => `
+            <span class="contact-badge phone" data-copy="${escHtml(p)}" title="Clicar pra copiar">☎️ ${escHtml(p)}</span>
+          `).join('')}
+          ${(profile.contatos.grupos_whatsapp || []).map(g => `
+            <a class="contact-badge whatsapp" href="${escHtml(g)}" target="_blank" rel="noopener" title="Abrir grupo">👥 Grupo WA</a>
+          `).join('')}
+        </div>
+      ` : ''}
+
       ${just ? `
-        <div class="card-section-label">Análise de fit</div>
+        <div class="card-section-label" style="opacity:.7">📜 Análise legacy <span style="font-weight:400;font-size:.65rem">(perfil antigo — coletado antes do refactor com IA)</span></div>
         <div class="card-justification">${escHtml(just)}</div>
       ` : ''}
 
@@ -749,14 +1201,26 @@ function buildProfileCard(profile) {
         <div class="card-comment collapsed">${escHtml(cmmText)}</div>
       ` : ''}
 
+      ${!hasMessages ? `
+        <div class="card-actions" style="margin-top:8px">
+          <button class="btn btn-sm btn-generate-msg btn-generate-individual"
+                  ${!hasOpenAI ? 'disabled' : ''}
+                  title="${escHtml(generateBtnTitle)}">
+            ✨ Gerar mensagens
+          </button>
+        </div>
+      ` : ''}
+
       <div class="card-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-sm btn-view-profile">Ver Perfil</button>
         ${postUrl ? `<button class="btn btn-secondary btn-sm btn-view-post">Ver Post</button>` : ''}
       </div>
 
       <div class="card-actions">
-        <button class="btn btn-primary btn-sm btn-send-dm" ${isSent ? 'disabled' : ''}>
-          ${isSent ? 'DM Enviado' : 'Enviar DM'}
+        <button class="btn btn-primary btn-sm btn-send-dm"
+                ${isSent || !iceText ? 'disabled' : ''}
+                title="${!iceText ? 'Gere as mensagens primeiro' : ''}">
+          ${isSent ? 'DM Enviado' : !iceText ? 'Sem mensagem' : 'Enviar DM'}
         </button>
         ${postUrl && cmmText ? `
           <button class="btn btn-secondary btn-sm btn-post-comment" ${isCommented ? 'disabled' : ''}>
@@ -791,6 +1255,70 @@ function buildProfileCard(profile) {
 
   // ── Armazena referência do perfil para o overlay ──────────────
   card._profile = profile;
+
+  // ── Checkbox de seleção (bulk-actions) ────────────────────────
+  card.querySelector('.card-select')?.addEventListener('click', e => e.stopPropagation());
+  card.querySelector('.card-select')?.addEventListener('change', e => {
+    const username = e.target.dataset.username;
+    if (e.target.checked) _selectedUsernames.add(username);
+    else _selectedUsernames.delete(username);
+    updateBulkUI();
+  });
+
+  // ── Click-to-copy nos badges de contato (email/phone) ─────────
+  card.querySelectorAll('.contact-badge[data-copy]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation();
+      const value = e.currentTarget.dataset.copy;
+      try {
+        await navigator.clipboard.writeText(value);
+        const original = e.currentTarget.textContent;
+        e.currentTarget.textContent = '✓ copiado';
+        setTimeout(() => { e.currentTarget.textContent = original; }, 1500);
+      } catch (_) {}
+    });
+  });
+
+  // Stop propagation nos badges de link (WhatsApp/grupo) — abre em nova aba sem abrir overlay
+  card.querySelectorAll('.contact-badge[href]').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation());
+  });
+
+  // ── Botão "Gerar mensagens" individual ────────────────────────
+  card.querySelector('.btn-generate-individual')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'Gerando…';
+
+    const res = await sendToBg({ type: 'GENERATE_MESSAGES', usernames: [profile.username] });
+
+    // Falha de nível bg (sem licença, sem chave, etc.)
+    if (res?.ok === false) {
+      if (res.error === 'license_required') {
+        onLicenseDeniedDuringAction(res.license_status);
+      } else {
+        showError(res.error || 'Erro ao gerar mensagens');
+      }
+      btn.disabled = false;
+      btn.innerHTML = '✨ Gerar mensagens';
+      return;
+    }
+
+    // res.ok === true mas precisa checar o resultado específico do username
+    const myResult = (res.results || []).find(r => r.username === profile.username);
+    if (myResult && !myResult.ok) {
+      showError(myResult.error || 'Falha ao gerar mensagens');
+      btn.disabled = false;
+      btn.innerHTML = '✨ Gerar mensagens';
+      return;
+    }
+
+    // Sucesso — fecha overlay (se estava aberto) e re-renderiza pra mostrar as msgs novas
+    closeCardDetail();
+    await refreshList();
+  });
 
   // ── Clique no header: abre o overlay de detalhe ───────────────
   card.querySelector('.card-header').addEventListener('click', () => {
@@ -884,7 +1412,7 @@ function buildProfileCard(profile) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function addLogEntry(e = {}, scroll = true) {
-  const { action = 'info', username, pontuacao, error, pausaSeg } = e;
+  const { action = 'info', username, pontuacao, score, error, pausaSeg, reason, detail } = e;
   let { message = '' } = e;
 
   // Reconstrói mensagem quando carregada do storage (não tem campo message)
@@ -892,12 +1420,20 @@ function addLogEntry(e = {}, scroll = true) {
     switch (action) {
       case 'evaluating':  message = username ? `Avaliando @${username}…` : '…'; break;
       case 'approved':    message = `@${username} — ${pontuacao}/10 — Aprovado ✓`; break;
+      case 'local_approved':  message = `@${username} — score ${score}/10 — Aprovado ✓`; break;
+      case 'filter_reject':   message = `@${username} — descartado: ${filterReasonLabel(reason, detail)}`; break;
       case 'rejected':    message = `@${username} — ${pontuacao}/10 — Descartado`; break;
-      case 'idioma_ignorado':  message = `@${username} — idioma ignorado (${e.idioma || '?'})`; break;
-      case 'collection_done': message = `Prospecção encerrada: sem mais perfis na hashtag. ${e.approved || 0} aprovados.`; break;
+      case 'collection_done':  message = `Prospecção encerrada. ${e.approved || 0} aprovados.`; break;
       case 'complete':    message = `Meta atingida! Prospecção encerrada.`; break;
       case 'stopped':     message = 'Prospecção interrompida pelo usuário.'; break;
       case 'long_pause':  message = pausaSeg ? `⏸ Pausa longa: ${pausaSeg}s (anti-detecção)` : '⏸ Pausa longa…'; break;
+      case 'hashtag_start':    message = `▶ Iniciando #${e.hashtag} (${e.idx}/${e.total})`; break;
+      case 'hashtag_done':     message = `✓ #${e.hashtag} concluída${e.next ? `. Próxima: #${e.next}` : ''}`; break;
+      case 'source_start':     message = sourceStartLabel(e); break;
+      case 'source_done':      message = sourceDoneLabel(e); break;
+      case 'ig_block_paused':  message = `⛔ ${e.message || reason}. Pausa de 2h.`; break;
+      case 'ig_block_definitive': message = `🛑 Bloqueio definitivo (2x): ${e.message || reason}.`; break;
+      case 'ig_block_resumed': message = '▶ Coleta retomada após pausa de 2h'; break;
       case 'error':       message = `Erro em @${username || '?'}: ${error || ''}`; break;
       default:            message = action;
     }
@@ -933,11 +1469,14 @@ function showLogHeader() {
   document.getElementById('log-header').style.display = 'flex';
 }
 
-function updateStatsUI(processed, approved) {
-  document.getElementById('stat-processed').textContent = processed;
-  document.getElementById('stat-approved').textContent  = approved;
-  const pct = Math.min(100, Math.round((approved / 20) * 100));
-  document.getElementById('progress-bar').style.width = `${pct}%`;
+function updateStatsUI(s) {
+  // Compat: aceita (processed, approved) ou ({ processed, approved, descartados, mensagens })
+  if (typeof s === 'number') s = { processed: s, approved: arguments[1] || 0 };
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.textContent = v; };
+  set('stat-processed', s.processed);
+  set('stat-approved',  s.approved);
+  set('stat-discarded', s.descartados);
+  set('stat-messages',  s.mensagens);
 }
 
 function updateListBadge(count) {
@@ -973,6 +1512,149 @@ function showToast(id, message, type = 'success') {
   el.className = `toast ${type}`;
   el.style.display = 'block';
   setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BANNERS DE STATUS — coleta ativa / bloqueio anti-bot
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _blockCountdownInterval = null;
+
+function showCollectionBanner() {
+  document.getElementById('collection-banner')?.classList.remove('hidden');
+}
+function hideCollectionBanner() {
+  document.getElementById('collection-banner')?.classList.add('hidden');
+}
+
+function showBlockBanner(message, untilTs) {
+  hideBlockDefinitiveBanner();
+  hideCollectionBanner();
+  const banner = document.getElementById('block-banner');
+  const msg    = document.getElementById('block-banner-msg');
+  if (banner) banner.classList.remove('hidden');
+  if (msg)    msg.textContent = message || 'Coleta pausada por 2h.';
+  startBlockCountdown(untilTs);
+}
+
+function hideBlockBanner() {
+  document.getElementById('block-banner')?.classList.add('hidden');
+  stopBlockCountdown();
+}
+
+function showBlockDefinitiveBanner(message) {
+  hideBlockBanner();
+  hideCollectionBanner();
+  const banner = document.getElementById('block-definitive-banner');
+  const msg    = document.getElementById('block-definitive-msg');
+  if (banner) banner.classList.remove('hidden');
+  if (msg && message) msg.textContent = message;
+}
+
+function hideBlockDefinitiveBanner() {
+  document.getElementById('block-definitive-banner')?.classList.add('hidden');
+}
+
+function startBlockCountdown(untilTs) {
+  stopBlockCountdown();
+  const el = document.getElementById('block-banner-countdown');
+  if (!el || !untilTs) return;
+
+  const tick = () => {
+    const ms = untilTs - Date.now();
+    if (ms <= 0) {
+      el.textContent = '00:00:00';
+      stopBlockCountdown();
+      return;
+    }
+    el.textContent = formatHMS(ms);
+  };
+  tick();
+  _blockCountdownInterval = setInterval(tick, 1000);
+}
+
+function stopBlockCountdown() {
+  if (_blockCountdownInterval) {
+    clearInterval(_blockCountdownInterval);
+    _blockCountdownInterval = null;
+  }
+}
+
+function formatHMS(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  GERAÇÃO DE MENSAGENS (sob demanda — popup → bg → OpenAI)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function generateMessagesForUsers(usernames) {
+  if (!usernames?.length) return;
+
+  const btn = document.getElementById('btn-bulk-generate');
+  const originalLabel = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.textContent = `Gerando (${usernames.length})…`; }
+
+  const res = await sendToBg({ type: 'GENERATE_MESSAGES', usernames });
+
+  if (res?.ok === false) {
+    if (res.error === 'license_required') {
+      onLicenseDeniedDuringAction(res.license_status);
+    } else {
+      showError(res.error || 'Erro ao gerar mensagens');
+    }
+  } else {
+    const okCount = (res.results || []).filter(r => r.ok).length;
+    showToast('settings-toast', `Mensagens geradas para ${okCount} perfil(is)`, 'success');
+    _selectedUsernames.clear();
+    await refreshList();
+  }
+
+  if (btn && originalLabel) { btn.innerHTML = originalLabel; }
+  updateBulkUI();
+}
+
+const _selectedUsernames = new Set();
+let _hasOpenAICached = false;
+
+function updateBulkUI() {
+  const count = _selectedUsernames.size;
+  const countEl = document.getElementById('bulk-count');
+  const btn = document.getElementById('btn-bulk-generate');
+  if (countEl) countEl.textContent = count;
+  if (btn) btn.disabled = count === 0 || !_hasOpenAICached;
+}
+
+function initBulkActions() {
+  document.getElementById('bulk-select-all')?.addEventListener('change', e => {
+    const checked = e.target.checked;
+    _selectedUsernames.clear();
+    document.querySelectorAll('.card-select').forEach(cb => {
+      cb.checked = checked;
+      if (checked) _selectedUsernames.add(cb.dataset.username);
+    });
+    updateBulkUI();
+  });
+  document.getElementById('btn-bulk-generate')?.addEventListener('click', () => {
+    if (_selectedUsernames.size === 0) return;
+    generateMessagesForUsers([..._selectedUsernames]);
+  });
+  document.getElementById('btn-resume-after-block')?.addEventListener('click', async () => {
+    const res = await sendToBg({ type: 'RESUME_PROSPECTING' });
+    if (res?.ok) {
+      hideBlockDefinitiveBanner();
+      hideBlockBanner();
+      showCollectionBanner();
+      document.getElementById('btn-start').classList.add('hidden');
+      document.getElementById('btn-stop').classList.remove('hidden');
+    } else {
+      showError(res?.error || 'Não foi possível retomar');
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1216,4 +1898,31 @@ function scoreToColor(score) {
   if (score >= 7) return '#22c55e'; // green
   if (score >= 5) return '#f59e0b'; // amber
   return '#ef4444';                 // red
+}
+
+// Formata pts da breakdown ex: 1.8 → "1.8 / 2 pts"
+function fmtPts(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  return `${v.toFixed(1)} / 2 pts`;
+}
+
+// Formata número grande ex: 25500 → "25.500"
+function fmtNumber(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  return v.toLocaleString('pt-BR');
+}
+
+// Formata timestamp ms como "há X dias" / "hoje" / "há 1 hora"
+function fmtDiasAtras(ts) {
+  if (!ts) return '—';
+  const diffMs = Date.now() - ts;
+  if (diffMs < 0)            return 'futuro?';
+  if (diffMs < 3600000)      return `há ${Math.max(1, Math.floor(diffMs / 60000))}min`;
+  if (diffMs < 86400000)     return `há ${Math.floor(diffMs / 3600000)}h`;
+  const dias = Math.floor(diffMs / 86400000);
+  if (dias === 0) return 'hoje';
+  if (dias === 1) return 'ontem';
+  return `há ${dias} dias`;
 }

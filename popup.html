@@ -25,24 +25,12 @@
       </svg>
       <span>IsiHunter</span>
     </div>
-    <span class="header-version">v1.0</span>
+    <span class="header-version">v1.3</span>
   </header>
 
   <!-- ───── Tabs ─────────────────────────────────────────────────── -->
   <nav class="tabs">
-    <button class="tab active" data-tab="settings">
-      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7 7 0 0 0-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.05 7.05 0 0 0-1.62-.94l-.36-2.54A.484.484 0 0 0 14 2h-4a.484.484 0 0 0-.48.41l-.36 2.54a7.05 7.05 0 0 0-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.47a.479.479 0 0 0 .12.61l2.03 1.58a7.17 7.17 0 0 0-.06.94c0 .32.03.64.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.36 1.04.67 1.62.94l.36 2.54c.05.24.27.41.48.41h4c.22 0 .43-.17.47-.41l.36-2.54a7.05 7.05 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.479.479 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-      </svg>
-      Config
-    </button>
-    <button class="tab" data-tab="messages">
-      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-      </svg>
-      Msgs
-    </button>
-    <button class="tab" data-tab="prospecting">
+    <button class="tab active" data-tab="prospecting">
       <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
         <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
       </svg>
@@ -50,9 +38,9 @@
     </button>
     <button class="tab" data-tab="list">
       <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
       </svg>
-      Lista
+      Aprovados
       <span class="tab-badge" id="list-badge" style="display:none">0</span>
     </button>
     <button class="tab" data-tab="history">
@@ -61,17 +49,23 @@
       </svg>
       Hist.
     </button>
+    <button class="tab" data-tab="messages">
+      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+      </svg>
+      Msgs
+    </button>
     <button class="tab" data-tab="webhook">
       <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
         <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
       </svg>
-      Hook
+      Webhook
     </button>
-    <button class="tab" data-tab="backup">
+    <button class="tab" data-tab="settings">
       <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/>
+        <path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7 7 0 0 0-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.05 7.05 0 0 0-1.62-.94l-.36-2.54A.484.484 0 0 0 14 2h-4a.484.484 0 0 0-.48.41l-.36 2.54a7.05 7.05 0 0 0-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.47a.479.479 0 0 0 .12.61l2.03 1.58a7.17 7.17 0 0 0-.06.94c0 .32.03.64.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.36 1.04.67 1.62.94l.36 2.54c.05.24.27.41.48.41h4c.22 0 .43-.17.47-.41l.36-2.54a7.05 7.05 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.479.479 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
       </svg>
-      Backup
+      Avançado
     </button>
     <button class="tab" data-tab="license">
       <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
@@ -82,10 +76,278 @@
   </nav>
 
   <!-- ════════════════════════════════════════════════════════════════
-       ABA: CONFIGURAÇÕES
+       ABA: BUSCA — controles + fontes + filtros + log
   ═══════════════════════════════════════════════════════════════════ -->
-  <section class="tab-content active" id="tab-settings">
-    <form id="settings-form" autocomplete="off">
+  <section class="tab-content active" id="tab-prospecting">
+
+    <div class="prospect-controls">
+      <button class="btn btn-primary" id="btn-start">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        Iniciar Prospecção
+      </button>
+      <button class="btn btn-danger hidden" id="btn-stop">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M6 6h12v12H6z"/>
+        </svg>
+        Parar
+      </button>
+    </div>
+
+    <!-- Banner: coleta em andamento -->
+    <div class="collection-banner hidden" id="collection-banner">
+      <span style="font-size:14px">🟡</span>
+      <span><strong>Coleta em andamento</strong> — não feche a aba do Instagram.</span>
+    </div>
+
+    <!-- Banner: bloqueio anti-bot (pausa 2h) -->
+    <div class="block-banner hidden" id="block-banner">
+      <div class="block-banner-title">⛔ <strong>Bloqueio anti-bot do Instagram</strong></div>
+      <div class="block-banner-msg" id="block-banner-msg">Aguardando 2h antes de retomar.</div>
+      <div class="block-banner-countdown" id="block-banner-countdown">--:--:--</div>
+    </div>
+
+    <!-- Banner: bloqueio definitivo (2x na sessão) -->
+    <div class="block-banner block-definitive hidden" id="block-definitive-banner">
+      <div class="block-banner-title">🛑 <strong>Bloqueio definitivo</strong></div>
+      <div class="block-banner-msg" id="block-definitive-msg">Instagram bloqueou 2x nesta sessão. Aguarde algumas horas antes de reiniciar.</div>
+      <button class="btn btn-primary btn-sm" id="btn-resume-after-block" style="margin-top:8px;width:100%">▶ Reiniciar Coleta Agora</button>
+    </div>
+
+    <div class="list-upload-divider"><span>ou</span></div>
+
+    <div class="list-upload-row">
+      <label class="list-upload-label" for="list-file-input">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>
+        </svg>
+        <span id="list-upload-text">Triar lista de usuários (.txt / .csv)</span>
+        <input type="file" id="list-file-input" accept=".txt,.csv" style="display:none" />
+      </label>
+      <button class="btn btn-secondary btn-sm" id="btn-start-list" disabled>▶ Triar</button>
+    </div>
+
+    <!-- Estatísticas -->
+    <div class="stats-row" id="stats-row" style="display:none">
+      <div class="stat-chip">
+        <span class="stat-num" id="stat-processed">0</span>
+        <span class="stat-label">analisados</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-chip">
+        <span class="stat-num approved" id="stat-approved">0</span>
+        <span class="stat-label">aprovados</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-chip">
+        <span class="stat-num discarded" id="stat-discarded">0</span>
+        <span class="stat-label">descartados</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-chip">
+        <span class="stat-num messages" id="stat-messages">0</span>
+        <span class="stat-label">mensagens</span>
+      </div>
+    </div>
+
+    <!-- Log em tempo real -->
+    <div class="log-header" id="log-header" style="display:none">
+      <span>Log em tempo real</span>
+      <button class="btn-link" id="btn-clear-log">Limpar</button>
+    </div>
+    <div class="log" id="log-area">
+      <div class="log-empty">Inicie a prospecção para ver o progresso aqui.</div>
+    </div>
+
+    <!-- Erro global -->
+    <div class="error-banner hidden" id="error-banner"></div>
+
+    <!-- Form: Fontes + Filtros -->
+    <form id="search-form" autocomplete="off">
+
+      <div class="settings-section-title">Fontes de Busca</div>
+      <div class="hint" style="margin-bottom:10px">
+        Marque uma ou mais fontes. As ativas rodam em sequência.
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input id="fonteHashtagAtiva" type="checkbox" />
+          <span><strong>Hashtags</strong> — até 10, separadas por vírgula</span>
+        </label>
+        <input id="fonteHashtagLista" type="text" placeholder="ex: marketing, vendas, coach" />
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input id="fonteSeguidoresAtiva" type="checkbox" />
+          <span><strong>Seguidores de um perfil</strong></span>
+        </label>
+        <input id="fonteSeguidoresPerfil" type="text" placeholder="@perfil (sem @)" />
+        <span class="hint">A extensão coleta quem segue esse perfil. Limite de segurança: 5.000 followers por sessão.</span>
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input id="fonteEngajamentoAtiva" type="checkbox" />
+          <span><strong>Engajamento em posts de um perfil</strong></span>
+        </label>
+        <div class="field row" style="margin-bottom:0">
+          <div class="field-half">
+            <input id="fonteEngajamentoPerfil" type="text" placeholder="@perfil (sem @)" />
+          </div>
+          <div class="field-half">
+            <input id="fonteEngajamentoNPosts" type="number" min="1" max="12" value="12" placeholder="N posts" />
+          </div>
+        </div>
+        <span class="hint">Coleta quem curtiu/comentou os últimos N posts (1-12). Cada engajador único entra no funil.</span>
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input id="fontePalavrasChaveAtiva" type="checkbox" />
+          <span><strong>Palavras-chave</strong> — busca direto no Instagram (não vira hashtag)</span>
+        </label>
+        <input id="fontePalavrasChaveLista" type="text" placeholder="ex: marketing digital, consultoria, mentoria" />
+        <span class="hint">Cada termo (até 10, separados por vírgula) busca perfis no Instagram cujo @, nome ou bio combine. Retorna ~50 perfis por termo.</span>
+      </div>
+
+      <div class="settings-section-title">Filtros (Pré-Qualificação)</div>
+      <div class="hint" style="margin-bottom:10px">
+        Todos opcionais — em branco = não filtra. Perfis reprovados são descartados localmente, sem chamar OpenAI.
+      </div>
+
+      <div class="field row">
+        <div class="field-half">
+          <label for="filtroSeguidoresMin">Seguidores mín.</label>
+          <input id="filtroSeguidoresMin" type="number" min="0" placeholder="ex: 1000" />
+        </div>
+        <div class="field-half">
+          <label for="filtroSeguidoresMax">Seguidores máx.</label>
+          <input id="filtroSeguidoresMax" type="number" min="0" placeholder="ex: 50000" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="filtroKeywords">Palavras-chave em bio / @ / nome (CSV)</label>
+        <input id="filtroKeywords" type="text" placeholder="ex: coach, mentoria, consultor" />
+        <span class="hint">Case+acento-insensitive, palavra inteira. 1 match basta.</span>
+      </div>
+
+      <div class="field">
+        <label for="filtroUltimoPostDias">Última publicação em até (dias)</label>
+        <input id="filtroUltimoPostDias" type="number" min="1" placeholder="ex: 30" />
+      </div>
+
+      <div class="field row">
+        <div class="field-half">
+          <label for="filtroPostsMin">Mín. posts</label>
+          <input id="filtroPostsMin" type="number" min="0" placeholder="ex: 5" />
+        </div>
+        <div class="field-half">
+          <label for="filtroPostsDias">Nos últimos (dias)</label>
+          <input id="filtroPostsDias" type="number" min="1" placeholder="ex: 30" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="filtroEngajamentoMin">Taxa de engajamento mín. (%)</label>
+        <input id="filtroEngajamentoMin" type="number" min="0" step="0.1" placeholder="ex: 2.5" />
+      </div>
+
+      <div class="actions-row">
+        <button type="submit" class="btn btn-primary" id="btn-save-search">
+          Salvar Busca
+        </button>
+      </div>
+
+      <div class="toast" id="search-toast"></div>
+    </form>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       ABA: APROVADOS
+  ═══════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-list">
+
+    <div class="list-header">
+      <span id="list-counter">Nenhum perfil aprovado ainda</span>
+      <button class="btn-link danger" id="btn-clear-all">Limpar tudo</button>
+    </div>
+
+    <!-- Toolbar: ordenação + filtro rápido -->
+    <div class="list-toolbar hidden" id="list-toolbar">
+      <div class="list-toolbar-group">
+        <span class="list-toolbar-label">Ordenar</span>
+        <button class="chip-btn active" data-sort="score-desc">Score ↓</button>
+        <button class="chip-btn" data-sort="date-desc">Recentes</button>
+        <button class="chip-btn" data-sort="name-asc">Nome A-Z</button>
+      </div>
+      <div class="list-toolbar-group">
+        <span class="list-toolbar-label">Filtrar</span>
+        <button class="chip-btn active" data-list-filter="all">Todos</button>
+        <button class="chip-btn" data-list-filter="with-msgs">Com msg</button>
+        <button class="chip-btn" data-list-filter="without-msgs">Sem msg</button>
+        <button class="chip-btn" data-list-filter="dm-sent">DM enviado</button>
+        <button class="chip-btn" data-list-filter="with-contact">📧 Com contato</button>
+      </div>
+    </div>
+
+    <!-- Ações em lote: gerar mensagens dos selecionados -->
+    <div class="bulk-actions hidden" id="bulk-actions">
+      <label class="bulk-select-all">
+        <input type="checkbox" id="bulk-select-all" />
+        <span>Selecionar todos</span>
+      </label>
+      <button class="btn btn-primary btn-sm" id="btn-bulk-generate" disabled title="Selecione perfis e configure a chave OpenAI">
+        Gerar mensagens (<span id="bulk-count">0</span>)
+      </button>
+    </div>
+
+    <div class="profiles-list" id="profiles-list">
+      <div class="list-empty">
+        Nenhum perfil aprovado ainda. Inicie a prospecção na aba Busca.
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       ABA: HISTÓRICO
+  ═══════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-history">
+
+    <div class="list-header">
+      <span id="history-counter">Nenhum perfil analisado ainda</span>
+      <div class="list-header-actions">
+        <button class="btn-link" id="btn-export-history">↓ CSV</button>
+        <button class="btn-link danger" id="btn-clear-history">Limpar</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="history-filters">
+      <button class="filter-btn active" data-filter="all">Todos</button>
+      <button class="filter-btn" data-filter="aprovado">✓ Aprovados</button>
+      <button class="filter-btn" data-filter="descartado">✕ Descartados</button>
+    </div>
+
+    <div class="history-list" id="history-list">
+      <div class="list-empty">Nenhum perfil analisado ainda.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       ABA: MENSAGENS — ICP + Produto + Instrução + OpenAI + Prompts
+  ═══════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-messages">
+    <form id="messages-form" autocomplete="off">
+
+      <div class="msg-tip">
+        Esses campos só importam se você for <strong>gerar mensagens</strong> pros perfis aprovados. A coleta funciona normalmente sem eles.
+      </div>
+
+      <div class="settings-section-title">Contexto do Negócio</div>
 
       <div class="field">
         <label for="icp">ICP — Perfil do Cliente Ideal</label>
@@ -105,50 +367,56 @@
           placeholder="Ex: Tom direto e descontraído, mencionar algo do conteúdo recente da pessoa..."></textarea>
       </div>
 
-      <div class="field">
-        <label for="hashtags">Hashtags / Palavras-chave</label>
-        <input id="hashtags" type="text"
-          placeholder="Ex: #coach, #mentoria, #consultoria" />
-        <span class="hint">Separe por vírgula. A extensão usará a primeira hashtag.</span>
-      </div>
+      <div class="settings-section-title">Chave OpenAI</div>
 
       <div class="field">
-        <label for="idiomaAlvo">Idioma dos Perfis</label>
-        <select id="idiomaAlvo">
-          <option value="">Qualquer idioma</option>
-          <option value="pt">Português</option>
-          <option value="en">Inglês</option>
-          <option value="es">Espanhol</option>
-          <option value="fr">Francês</option>
-          <option value="it">Italiano</option>
-          <option value="de">Alemão</option>
-        </select>
-        <span class="hint">Quando selecionado, perfis em outros idiomas são ignorados sem consumir cota de IA.</span>
-      </div>
-
-      <div class="field row">
-        <div class="field-half">
-          <label for="pontuacaoMinima">Pontuação mínima (0–10)</label>
-          <input id="pontuacaoMinima" type="number" min="0" max="10" value="7" />
-        </div>
-        <div class="field-half">
-          <label for="metaPerfis">Meta de perfis aprovados</label>
-          <input id="metaPerfis" type="number" min="1" max="500" value="20" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="openaiKey">Chave API OpenAI</label>
+        <label for="openaiKey">Chave API OpenAI (opcional)</label>
         <input id="openaiKey" type="password" placeholder="sk-..." />
+        <span class="hint">Sem chave configurada, a extensão coleta + qualifica perfis normalmente, mas o botão "Gerar mensagens" fica desativado.</span>
       </div>
 
-      <div class="settings-section-title">Webhook de Leads</div>
+      <div class="settings-section-title">Prompts Personalizados</div>
+      <div class="msg-desc">
+        Opcionais — em branco usa os prompts padrão. Variáveis: <code>{nome}</code>, <code>{bio}</code>, <code>{ultimo_post}</code>, <code>{fit}</code>.
+      </div>
+
+      <div class="field">
+        <label for="promptIcebreaker">Prompt Quebra-Gelo</label>
+        <textarea id="promptIcebreaker" rows="5"
+          placeholder="Ex: Você é especialista em prospecção humanizada. Gere uma mensagem curta e informal para {nome}, que fala sobre {bio}. Termine com uma pergunta sobre a maior dor deles. NÃO venda nada."></textarea>
+      </div>
+
+      <div class="field">
+        <label for="promptHook">Prompt Gancho</label>
+        <textarea id="promptHook" rows="5"
+          placeholder="Ex: Você é especialista em copywriting. Gere uma mensagem direta para {nome}. Apresente brevemente meu produto e mostre como pode ajudar especificamente esta pessoa com base em: {bio} e {fit}."></textarea>
+      </div>
+
+      <div class="actions-row">
+        <button type="submit" class="btn btn-primary" id="btn-save-messages">
+          Salvar Mensagens
+        </button>
+      </div>
+
+      <div class="toast" id="messages-toast"></div>
+    </form>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       ABA: WEBHOOK — integração com CRM
+  ═══════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-webhook">
+    <form id="webhook-form" autocomplete="off">
+
+      <div class="msg-tip">
+        Envia leads aprovados pro seu CRM via HTTP POST. Funciona com ou sem mensagens (campo <code>has_messages</code> indica).
+      </div>
 
       <div class="field">
         <label for="webhookEndpoint">Endpoint (URL)</label>
         <input id="webhookEndpoint" type="url"
           placeholder="https://qeljsfjwrphrkabcqppc.supabase.co/functions/v1/lead-webhook" />
-        <span class="hint">Deixe vazio para usar o endpoint padrão da documentação.</span>
+        <span class="hint">Deixe vazio para usar o endpoint padrão.</span>
       </div>
 
       <div class="field">
@@ -177,9 +445,29 @@
           <input id="webhookAuto" type="checkbox" />
           <span>Enviar automaticamente ao aprovar cada perfil</span>
         </label>
+        <span class="hint">Se ativo, leads aprovados disparam o webhook na hora — mesmo sem mensagens geradas.</span>
       </div>
 
+      <div class="actions-row">
+        <button type="submit" class="btn btn-primary" id="btn-save-webhook">
+          Salvar Webhook
+        </button>
+      </div>
+
+      <div class="toast" id="webhook-toast"></div>
+    </form>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       ABA: AVANÇADO — anti-detecção + backup + listas
+  ═══════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-settings">
+    <form id="settings-form" autocomplete="off">
+
       <div class="settings-section-title">Intervalos Anti-Detecção</div>
+      <div class="hint" style="margin-bottom:10px">
+        Atrasos aleatórios entre fetches pra reduzir risco de bloqueio. A extensão também adiciona ±20% de variação no tamanho do grupo e pausas longas (2-5min) a cada 3-5 grupos.
+      </div>
 
       <div class="field row">
         <div class="field-half">
@@ -204,21 +492,29 @@
       </div>
 
       <div class="field">
-        <label for="tamanhoGrupo">Perfis por grupo (aciona pausa longa)</label>
+        <label for="tamanhoGrupo">Perfis por grupo (base — varia ±20%)</label>
         <input id="tamanhoGrupo" type="number" min="1" max="100" value="10" />
-        <span class="hint">A cada N perfis verificados, a extensão faz uma pausa longa.</span>
+      </div>
+
+      <div class="settings-section-title">Extração de Contatos <em style="font-size:11px;font-weight:400;color:var(--text-dim)">(beta)</em></div>
+      <div class="field">
+        <label class="toggle-label">
+          <input id="extrairContatos" type="checkbox" />
+          <span><strong>Extrair email e WhatsApp da bio e dos links</strong></span>
+        </label>
+        <span class="hint">Quando ativo, busca padrões de email e telefones BR na bio + detecta links diretos pro WhatsApp (wa.me, api.whatsapp.com). Sem fetch externo. Você é responsável pelo uso dos dados (LGPD/legítimo interesse).</span>
       </div>
 
       <div class="actions-row">
         <button type="submit" class="btn btn-primary" id="btn-save-settings">
-          Salvar Configurações
+          Salvar Avançado
         </button>
       </div>
 
       <div class="settings-section-title">Backup de Configurações</div>
 
-      <div class="field">
-        <span class="hint">Exporte suas configurações para um arquivo e importe depois de reinstalar a extensão.</span>
+      <div class="hint" style="margin-bottom:6px">
+        Exporte/importe TODAS as configurações da extensão (busca + mensagens + webhook + avançado).
       </div>
 
       <div class="actions-row">
@@ -232,8 +528,8 @@
       </div>
 
       <div class="settings-section-title">Blacklist / Graylist</div>
-      <div class="field">
-        <span class="hint">Exporte ou importe a blacklist (perfis aprovados, nunca repetidos) e a graylist (perfis descartados, bloqueados por 30 dias). A importação <strong>mescla</strong> com os dados existentes.</span>
+      <div class="hint" style="margin-bottom:6px">
+        Blacklist = perfis aprovados (nunca repetir). Graylist = perfis descartados (ignorar por 30 dias). Importar <strong>mescla</strong> com os dados existentes.
       </div>
       <div class="actions-row">
         <button type="button" class="btn btn-secondary" id="btn-export-blacklist">↓ Exportar Blacklist</button>
@@ -252,155 +548,6 @@
 
       <div class="toast" id="settings-toast"></div>
     </form>
-  </section>
-
-  <!-- ════════════════════════════════════════════════════════════════
-       ABA: MENSAGENS
-  ═══════════════════════════════════════════════════════════════════ -->
-  <section class="tab-content" id="tab-messages">
-    <form id="messages-form" autocomplete="off">
-
-      <div class="msg-tip">
-        Use <code>{nome}</code>, <code>{bio}</code>, <code>{ultimo_post}</code>, <code>{fit}</code> como variáveis no prompt.
-        Se deixar em branco, usa o prompt padrão interno.
-      </div>
-
-      <div class="settings-section-title">Quebra-Gelo</div>
-      <div class="msg-desc">
-        Intimista, informal, sem vender. Termina com pergunta que revela a dor.
-      </div>
-      <div class="field">
-        <label for="promptIcebreaker">Prompt personalizado (opcional)</label>
-        <textarea id="promptIcebreaker" rows="6"
-          placeholder="Ex: Você é especialista em prospecção humanizada. Gere uma mensagem curta e informal para {nome}, que fala sobre {bio}. Termine com uma pergunta sobre a maior dor deles. NÃO venda nada."></textarea>
-      </div>
-
-      <div class="settings-section-title">Gancho</div>
-      <div class="msg-desc">
-        Direto, apresenta você e o produto, aponta caminho personalizado ao lead.
-      </div>
-      <div class="field">
-        <label for="promptHook">Prompt personalizado (opcional)</label>
-        <textarea id="promptHook" rows="6"
-          placeholder="Ex: Você é especialista em copywriting. Gere uma mensagem direta para {nome}. Apresente brevemente meu produto e mostre como pode ajudar especificamente esta pessoa com base em: {bio} e {fit}."></textarea>
-      </div>
-
-      <div class="actions-row">
-        <button type="submit" class="btn btn-primary" id="btn-save-messages">
-          Salvar Prompts
-        </button>
-      </div>
-
-      <div class="toast" id="messages-toast"></div>
-    </form>
-  </section>
-
-  <!-- ════════════════════════════════════════════════════════════════
-       ABA: PROSPECÇÃO
-  ═══════════════════════════════════════════════════════════════════ -->
-  <section class="tab-content" id="tab-prospecting">
-
-    <div class="prospect-controls">
-      <button class="btn btn-primary" id="btn-start">
-        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M8 5v14l11-7z"/>
-        </svg>
-        Iniciar Prospecção
-      </button>
-      <button class="btn btn-danger hidden" id="btn-stop">
-        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M6 6h12v12H6z"/>
-        </svg>
-        Parar
-      </button>
-    </div>
-
-    <div class="list-upload-divider"><span>ou</span></div>
-
-    <div class="list-upload-row">
-      <label class="list-upload-label" for="list-file-input">
-        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>
-        </svg>
-        <span id="list-upload-text">Triar lista de usuários (.txt / .csv)</span>
-        <input type="file" id="list-file-input" accept=".txt,.csv" style="display:none" />
-      </label>
-      <button class="btn btn-secondary btn-sm" id="btn-start-list" disabled>▶ Triar</button>
-    </div>
-
-    <!-- Estatísticas -->
-    <div class="stats-row" id="stats-row" style="display:none">
-      <div class="stat-chip">
-        <span class="stat-num" id="stat-processed">0</span>
-        <span class="stat-label">analisados</span>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat-chip">
-        <span class="stat-num approved" id="stat-approved">0</span>
-        <span class="stat-label">aprovados</span>
-      </div>
-      <div class="progress-wrap">
-        <div class="progress-bar" id="progress-bar" style="width:0%"></div>
-      </div>
-    </div>
-
-    <!-- Log em tempo real -->
-    <div class="log-header" id="log-header" style="display:none">
-      <span>Log em tempo real</span>
-      <button class="btn-link" id="btn-clear-log">Limpar</button>
-    </div>
-    <div class="log" id="log-area">
-      <div class="log-empty">Inicie a prospecção para ver o progresso aqui.</div>
-    </div>
-
-    <!-- Erro global -->
-    <div class="error-banner hidden" id="error-banner"></div>
-  </section>
-
-  <!-- ════════════════════════════════════════════════════════════════
-       ABA: LISTA
-  ═══════════════════════════════════════════════════════════════════ -->
-  <section class="tab-content" id="tab-list">
-
-    <div class="list-header">
-      <span id="list-counter">Nenhum perfil aprovado ainda</span>
-      <button class="btn-link danger" id="btn-clear-all">Limpar tudo</button>
-    </div>
-
-    <div class="threshold-notice hidden" id="threshold-notice">
-      <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-      </svg>
-      Aguardando 20 perfis aprovados para habilitar ações em massa.
-    </div>
-
-    <div class="profiles-list" id="profiles-list">
-      <div class="list-empty">
-        Nenhum perfil aprovado ainda. Inicie a prospecção na aba anterior.
-      </div>
-    </div>
-  </section>
-
-  <!-- ════════════════════════════════════════════════════════════════
-       ABA: HISTÓRICO
-  ═══════════════════════════════════════════════════════════════════ -->
-  <section class="tab-content" id="tab-history">
-
-    <div class="list-header">
-      <span id="history-counter">Nenhum perfil analisado ainda</span>
-      <button class="btn-link danger" id="btn-clear-history">Limpar histórico</button>
-    </div>
-
-    <!-- Filtros -->
-    <div class="history-filters">
-      <button class="filter-btn active" data-filter="all">Todos</button>
-      <button class="filter-btn" data-filter="aprovado">✓ Aprovados</button>
-      <button class="filter-btn" data-filter="descartado">✕ Descartados</button>
-    </div>
-
-    <div class="history-list" id="history-list">
-      <div class="list-empty">Nenhum perfil analisado ainda.</div>
-    </div>
   </section>
 
   <!-- ════════════════════════════════════════════════════════════════
@@ -516,6 +663,6 @@
 
 </div><!-- /.app -->
 
-<script type="module" src="popup.js?v=16"></script>
+<script type="module" src="popup.js?v=25"></script>
 </body>
 </html>

@@ -15,18 +15,25 @@ import {
   addToGraylist,
   addToHistory,
   clearHistory,
+  getHistory,
   getBlacklist,
   getGraylist,
   clearExpiredGraylist,
+  incrementStat,
 } from './db.js';
-import { qualifyProfile, generateIcebreaker, generateHook, generateComment } from './openai.js';
+import { generateIcebreaker, generateHook, generateComment } from './openai.js';
 import { sendLead } from './webhook.js';
 import { validateLicense, gateAction, pulse, ensureAlarm, ALARM as LICENSE_ALARM } from './sync.js';
+import { passesFilters } from './filters.js';
+import { calculateScore } from './score.js';
+import { classifyFailure, shouldTriggerBlock, blockMessage } from './igBlockDetector.js';
+import { extractFromProfile } from './contactExtractor.js';
 
 // ─── Estado em memória ────────────────────────────────────────────────────
 let igTabId = null;
+const _failureBuffer = []; // últimas 10 falhas de fetch do IG (classificadas)
 
-// ─── Keep-alive + alarm de licença ────────────────────────────────────────
+// ─── Keep-alive + alarms ──────────────────────────────────────────────────
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
 ensureAlarm();
 chrome.alarms.onAlarm.addListener(async alarm => {
@@ -35,6 +42,8 @@ chrome.alarms.onAlarm.addListener(async alarm => {
   } else if (alarm.name === LICENSE_ALARM) {
     const r = await validateLicense({ force: true });
     if (r?.status !== 'valid') await __interruptOnRevocation(r);
+  } else if (alarm.name === 'blockResume') {
+    await resumeFromBlock();
   }
 });
 
@@ -54,7 +63,6 @@ async function __interruptOnRevocation(status) {
   if (!stats.active) return;
   await saveStats({ active: false });
 
-  // Tenta parar via igTabId em memória; senão, varre abas do Instagram
   if (igTabId) {
     try { await sendToContent(igTabId, { type: 'STOP_COLLECTION' }); } catch (_) {}
   }
@@ -85,7 +93,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // Ações que exigem licença válida (gate antes de processar)
-const GATED_ACTIONS = new Set(['START_PROSPECTING', 'START_LIST_PROSPECTING', 'SEND_DM', 'POST_COMMENT', 'SEND_WEBHOOK']);
+const GATED_ACTIONS = new Set([
+  'START_PROSPECTING', 'START_LIST_PROSPECTING',
+  'SEND_DM', 'POST_COMMENT', 'SEND_WEBHOOK',
+  'GENERATE_MESSAGES',
+]);
 
 async function route(msg, _sender) {
   // Gate de licença pra ações sensíveis
@@ -102,63 +114,144 @@ async function route(msg, _sender) {
     case 'START_PROSPECTING':       return startProspecting();
     case 'START_LIST_PROSPECTING':  return startListProspecting(msg.usernames);
     case 'STOP_PROSPECTING':        return stopProspecting();
-    case 'GET_PROFILES':        return { profiles: await getProfiles() };
-    case 'GET_STATS':           return { stats: await getStats() };
-    case 'UPDATE_STATUS':       return updateStatus(msg.username, msg.status);
-    case 'CLEAR_PROFILES':      return clearAll();
-    case 'GET_HISTORY':         return { history: await getHistory() };
-    case 'GET_BLACKLIST':       return { blacklist: await getBlacklist() };
-    case 'GET_GRAYLIST':        return { graylist: await getGraylist() };
-    case 'PROFILE_DATA':        return processProfile(msg.profileData);
-    case 'SEND_DM':             return initiateDM(msg.username, msg.message);
-    case 'DM_SENT':             return onDmSent(msg.username);
-    case 'POST_COMMENT':        return initiatePostComment(msg.username, msg.postUrl, msg.comment);
-    case 'COMMENT_POSTED':      return onCommentPosted(msg.username);
-    case 'SEND_WEBHOOK':        return dispatchWebhook(msg.username);
-    case 'COLLECTION_DONE':     return onCollectionDone();
-    case 'COLLECTION_ERROR':    return onCollectionError(msg.error);
-    case 'CHECK_ACTIVE':        return checkActiveState();
-    case 'CHECK_LICENSE':       return { status: (await validateLicense({ silent: true }))?.status };
-    case 'PROGRESS':            return {}; // emitido por content.js, consumido pelo popup — no-op aqui
-    case 'PING':                return { pong: true };
-    default:                    throw new Error(`Mensagem desconhecida: ${msg.type}`);
+    case 'RESUME_PROSPECTING':      return resumeProspecting();
+    case 'GET_PROFILES':            return { profiles: await getProfiles() };
+    case 'GET_STATS':               return { stats: await getStats() };
+    case 'UPDATE_STATUS':           return updateStatus(msg.username, msg.status);
+    case 'CLEAR_PROFILES':          return clearAll();
+    case 'GET_HISTORY':             return { history: await getHistory() };
+    case 'GET_BLACKLIST':           return { blacklist: await getBlacklist() };
+    case 'GET_GRAYLIST':            return { graylist: await getGraylist() };
+    case 'PROFILE_DATA':            return processProfile(msg.profileData);
+    case 'SEND_DM':                 return initiateDM(msg.username, msg.message);
+    case 'DM_SENT':                 return onDmSent(msg.username);
+    case 'POST_COMMENT':            return initiatePostComment(msg.username, msg.postUrl, msg.comment);
+    case 'COMMENT_POSTED':          return onCommentPosted(msg.username);
+    case 'SEND_WEBHOOK':            return dispatchWebhook(msg.username);
+    case 'GENERATE_MESSAGES':       return generateMessagesFor(msg.usernames);
+    case 'IG_FETCH_FAILED':         return reportIgFetchFailure(msg);
+    case 'COLLECTION_DONE':         return onCollectionDone();
+    case 'COLLECTION_ERROR':        return onCollectionError(msg.error);
+    case 'CHECK_ACTIVE':            return checkActiveState();
+    case 'CHECK_LICENSE':           return { status: (await validateLicense({ silent: true }))?.status };
+    case 'PROGRESS':                return {};
+    case 'PING':                    return { pong: true };
+    default:                        throw new Error(`Mensagem desconhecida: ${msg.type}`);
   }
 }
 
-// ─── Iniciar prospecção ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  PROSPECÇÃO — INÍCIO
+// ═══════════════════════════════════════════════════════════════════════════
+
 async function startProspecting() {
   const cfg = await getSettings();
 
-  if (!cfg.openaiKey?.trim())  throw new Error('Configure a chave da API OpenAI nas Configurações');
-  if (!cfg.icp?.trim())        throw new Error('Configure o ICP nas Configurações');
-  if (!cfg.hashtags?.trim())   throw new Error('Configure as hashtags nas Configurações');
+  // Constrói a lista de sources ativas, em ordem
+  const sources = [];
 
-  // Reinicia estatísticas e log; limpa graylists expiradas
-  await saveStats({ active: true, processed: 0, approved: 0 });
+  if (cfg.fonteHashtagAtiva !== false && cfg.fonteHashtagLista?.trim()) {
+    const hashtags = parseHashtagList(cfg.fonteHashtagLista);
+    if (hashtags.length) sources.push({ type: 'hashtag', list: hashtags });
+  }
+
+  if (cfg.fonteSeguidoresAtiva && cfg.fonteSeguidoresPerfil?.trim()) {
+    const perfil = cfg.fonteSeguidoresPerfil.trim().replace(/^@/, '').toLowerCase();
+    if (perfil) sources.push({ type: 'seguidores', perfil });
+  }
+
+  if (cfg.fonteEngajamentoAtiva && cfg.fonteEngajamentoPerfil?.trim()) {
+    const perfil = cfg.fonteEngajamentoPerfil.trim().replace(/^@/, '').toLowerCase();
+    const nPosts = Math.max(1, Math.min(12, Number(cfg.fonteEngajamentoNPosts) || 12));
+    if (perfil) sources.push({ type: 'engajamento', perfil, nPosts });
+  }
+
+  if (cfg.fontePalavrasChaveAtiva && cfg.fontePalavrasChaveLista?.trim()) {
+    const keywords = parseCsvList(cfg.fontePalavrasChaveLista).slice(0, 10);
+    if (keywords.length) sources.push({ type: 'palavras_chave', keywords });
+  }
+
+  if (!sources.length) {
+    throw new Error('Configure ao menos uma fonte na aba Busca (Hashtags ou Seguidores)');
+  }
+
+  // Reset stats + abre nova sessão
+  await saveStats({
+    active: true,
+    processed: 0,
+    approved: 0,
+    descartados_local: 0,
+    aprovados_local: 0,
+    mensagens_geradas: 0,
+    sources,
+    source_idx: 0,
+    hashtag_idx: 0,
+    bloqueio_count: 0,
+    bloqueio_paused_until: null,
+    bloqueio_definitivo: false,
+    bloqueio_last_reason: null,
+  });
   await clearExpiredGraylist();
+  _failureBuffer.length = 0;
 
-  // Primeira hashtag da lista — remove #, espaços e converte para minúsculas
-  const hashtag = cfg.hashtags.split(',')[0].trim().replace(/^#/, '').replace(/\s+/g, '').toLowerCase();
-  if (!hashtag) throw new Error('Configure uma hashtag válida nas Configurações (ex: #afiliadosbrasil).');
+  return runNextSource();
+}
 
-  // Navega direto para a página da hashtag (abordagem DOM)
-  const hashtagUrl = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
+// ═══ Dispatcher de sources — roda a próxima da lista ═══════════════════════
+async function runNextSource() {
+  const stats = await getStats();
+  const sources = stats.sources || [];
+  const idx = stats.source_idx || 0;
+
+  if (idx >= sources.length) {
+    // Acabou — fecha sessão
+    await saveStats({ active: false });
+    broadcast({ type: 'PROGRESS', action: 'collection_done', approved: stats.approved });
+    appendLog({ action: 'collection_done', approved: stats.approved });
+    return { done: true };
+  }
+
+  const source = sources[idx];
+  if (source.type === 'hashtag')        return runHashtagSource(source);
+  if (source.type === 'seguidores')     return runSeguidoresSource(source);
+  if (source.type === 'engajamento')    return runEngajamentoSource(source);
+  if (source.type === 'palavras_chave') return runPalavrasChaveSource(source);
+
+  // Tipo desconhecido — pula
+  await saveStats({ source_idx: idx + 1, hashtag_idx: 0 });
+  return runNextSource();
+}
+
+async function runHashtagSource(source) {
+  const stats = await getStats();
+  const list = source.list || [];
+  const hidx = stats.hashtag_idx || 0;
+
+  if (hidx >= list.length) {
+    // Source de hashtags terminou — avança pra próxima
+    appendLog({ action: 'source_done', source: 'hashtag' });
+    broadcast({ type: 'PROGRESS', action: 'source_done', source: 'hashtag' });
+    await saveStats({ source_idx: (stats.source_idx || 0) + 1, hashtag_idx: 0 });
+    return runNextSource();
+  }
+
+  const hashtag = list[hidx];
+  const url = `https://www.instagram.com/explore/tags/${encodeURIComponent(hashtag)}/`;
+
   const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
   if (igTabs.length > 0) {
     igTabId = igTabs[0].id;
-    await chrome.tabs.update(igTabId, { url: hashtagUrl, active: true });
+    await chrome.tabs.update(igTabId, { url, active: true });
   } else {
-    const tab = await chrome.tabs.create({ url: hashtagUrl });
+    const tab = await chrome.tabs.create({ url });
     igTabId = tab.id;
   }
   await waitForTabLoad(igTabId);
 
-  // Dispara coleta no content script (resposta assíncrona — não bloqueia)
   try {
-    await pingContentScript(igTabId); // Garante que o content script está ativo
+    await pingContentScript(igTabId);
     await sendToContent(igTabId, { type: 'START_COLLECTION', hashtag });
   } catch (err) {
-    // Content script pode não estar carregado ainda; injeta manualmente
     await chrome.scripting.executeScript({
       target: { tabId: igTabId },
       files: ['content.js'],
@@ -167,20 +260,121 @@ async function startProspecting() {
     await sendToContent(igTabId, { type: 'START_COLLECTION', hashtag });
   }
 
-  return { started: true };
+  broadcast({ type: 'PROGRESS', action: 'hashtag_start', hashtag, idx: hidx + 1, total: list.length });
+  appendLog({ action: 'hashtag_start', hashtag, idx: hidx + 1, total: list.length });
+  return { started: true, hashtag, idx: hidx };
+}
+
+async function runSeguidoresSource(source) {
+  const perfil = source.perfil;
+
+  const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
+  if (igTabs.length > 0) {
+    igTabId = igTabs[0].id;
+    await chrome.tabs.update(igTabId, { active: true });
+  } else {
+    const tab = await chrome.tabs.create({ url: 'https://www.instagram.com/' });
+    igTabId = tab.id;
+    await waitForTabLoad(igTabId);
+  }
+
+  try {
+    await pingContentScript(igTabId);
+    await sendToContent(igTabId, { type: 'START_FOLLOWERS_COLLECTION', perfil });
+  } catch (err) {
+    await chrome.scripting.executeScript({
+      target: { tabId: igTabId },
+      files: ['content.js'],
+    });
+    await delay(1500);
+    await sendToContent(igTabId, { type: 'START_FOLLOWERS_COLLECTION', perfil });
+  }
+
+  broadcast({ type: 'PROGRESS', action: 'source_start', source: 'seguidores', perfil });
+  appendLog({ action: 'source_start', source: 'seguidores', perfil });
+  return { started: true, source: 'seguidores', perfil };
+}
+
+async function runEngajamentoSource(source) {
+  const perfil = source.perfil;
+  const nPosts = source.nPosts || 12;
+
+  const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
+  if (igTabs.length > 0) {
+    igTabId = igTabs[0].id;
+    await chrome.tabs.update(igTabId, { active: true });
+  } else {
+    const tab = await chrome.tabs.create({ url: 'https://www.instagram.com/' });
+    igTabId = tab.id;
+    await waitForTabLoad(igTabId);
+  }
+
+  try {
+    await pingContentScript(igTabId);
+    await sendToContent(igTabId, { type: 'START_ENGAJAMENTO_COLLECTION', perfil, nPosts });
+  } catch (err) {
+    await chrome.scripting.executeScript({
+      target: { tabId: igTabId },
+      files: ['content.js'],
+    });
+    await delay(1500);
+    await sendToContent(igTabId, { type: 'START_ENGAJAMENTO_COLLECTION', perfil, nPosts });
+  }
+
+  broadcast({ type: 'PROGRESS', action: 'source_start', source: 'engajamento', perfil, nPosts });
+  appendLog({ action: 'source_start', source: 'engajamento', perfil, nPosts });
+  return { started: true, source: 'engajamento', perfil, nPosts };
+}
+
+async function runPalavrasChaveSource(source) {
+  const keywords = source.keywords || [];
+
+  const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
+  if (igTabs.length > 0) {
+    igTabId = igTabs[0].id;
+    await chrome.tabs.update(igTabId, { active: true });
+  } else {
+    const tab = await chrome.tabs.create({ url: 'https://www.instagram.com/' });
+    igTabId = tab.id;
+    await waitForTabLoad(igTabId);
+  }
+
+  try {
+    await pingContentScript(igTabId);
+    await sendToContent(igTabId, { type: 'START_KEYWORDS_COLLECTION', keywords });
+  } catch (err) {
+    await chrome.scripting.executeScript({
+      target: { tabId: igTabId },
+      files: ['content.js'],
+    });
+    await delay(1500);
+    await sendToContent(igTabId, { type: 'START_KEYWORDS_COLLECTION', keywords });
+  }
+
+  broadcast({ type: 'PROGRESS', action: 'source_start', source: 'palavras_chave', keywords });
+  appendLog({ action: 'source_start', source: 'palavras_chave', keywords });
+  return { started: true, source: 'palavras_chave', keywords };
 }
 
 // ─── Triagem por lista de usuários ───────────────────────────────────────
 async function startListProspecting(usernames) {
-  const cfg = await getSettings();
-  if (!cfg.openaiKey?.trim()) throw new Error('Configure a chave da API OpenAI nas Configurações');
-  if (!cfg.icp?.trim())       throw new Error('Configure o ICP nas Configurações');
-  if (!usernames?.length)     throw new Error('Lista de usuários vazia');
+  if (!usernames?.length) throw new Error('Lista de usuários vazia');
 
-  await saveStats({ active: true, processed: 0, approved: 0 });
+  await saveStats({
+    active: true,
+    processed: 0,
+    approved: 0,
+    descartados_local: 0,
+    aprovados_local: 0,
+    hashtag_list: [],
+    hashtag_idx: 0,
+    bloqueio_count: 0,
+    bloqueio_paused_until: null,
+    bloqueio_definitivo: false,
+  });
   await clearExpiredGraylist();
+  _failureBuffer.length = 0;
 
-  // Qualquer aba do Instagram serve — as chamadas de API não dependem da página atual
   const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
   if (igTabs.length > 0) {
     igTabId = igTabs[0].id;
@@ -204,16 +398,35 @@ async function startListProspecting(usernames) {
   return { started: true };
 }
 
-// ─── Parar prospecção ────────────────────────────────────────────────────
 async function stopProspecting() {
   await saveStats({ active: false });
+  chrome.alarms.clear('blockResume').catch(() => {});
   if (igTabId) {
     try { await sendToContent(igTabId, { type: 'STOP_COLLECTION' }); } catch (_) {}
   }
   return { stopped: true };
 }
 
-// ─── Processar perfil recebido do content script ─────────────────────────
+// Retoma manualmente — útil após bloqueio definitivo
+async function resumeProspecting() {
+  const stats = await getStats();
+  if (!stats.sources?.length) {
+    return { resumed: false, reason: 'no_session' };
+  }
+  await saveStats({
+    active: true,
+    bloqueio_paused_until: null,
+    bloqueio_definitivo: false,
+    bloqueio_count: 0,
+  });
+  _failureBuffer.length = 0;
+  return runNextSource();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PROCESSAMENTO DE PERFIL
+// ═══════════════════════════════════════════════════════════════════════════
+
 async function processProfile(profileData) {
   const cfg   = await getSettings();
   const stats = await getStats();
@@ -221,158 +434,240 @@ async function processProfile(profileData) {
   stats.processed = (stats.processed || 0) + 1;
   await saveStats(stats);
 
-  // Notifica popup: avaliando
   broadcast({ type: 'PROGRESS', action: 'evaluating', username: profileData.username, ...stats });
 
-  // Qualifica com IA
-  let qual;
-  try {
-    qual = await qualifyProfile(cfg, profileData);
-  } catch (err) {
-    const entry = { action: 'error', username: profileData.username, error: err.message, ...stats };
-    await appendLog(entry);
-    broadcast({ type: 'PROGRESS', ...entry });
-    return { approved: false, error: err.message };
-  }
-
-  // Filtro de idioma — rejeita sem consumir mais chamadas de IA nem graylisting
-  if (cfg.idiomaAlvo && qual.idioma && qual.idioma !== cfg.idiomaAlvo) {
-    const entry = { action: 'idioma_ignorado', username: profileData.username, idioma: qual.idioma, ...stats };
-    await appendLog(entry);
-    broadcast({ type: 'PROGRESS', ...entry });
-    return { approved: false, idioma_ignorado: true };
-  }
-
-  const minScore = cfg.pontuacaoMinima ?? 7;
-  const approved = qual.pontuacao >= minScore;
-
-  if (approved) {
-    // Gera quebra-gelo e gancho em paralelo
-    const profileWithQualPre = { ...profileData, justificativa_icp: qual.justificativa };
-    let icebreaker = '';
-    let hook = '';
-    try {
-      [icebreaker, hook] = await Promise.all([
-        generateIcebreaker(cfg, profileWithQualPre, qual.justificativa),
-        generateHook(cfg, profileWithQualPre, qual.justificativa),
-      ]);
-    } catch (err) {
-      icebreaker = icebreaker || `(Erro ao gerar quebra-gelo: ${err.message})`;
-      hook       = hook       || `(Erro ao gerar gancho: ${err.message})`;
-    }
-
-    // Gera comentário para o post recente
-    const profileWithQual = { ...profileData, justificativa_icp: qual.justificativa };
-    let comentario = '';
-    try {
-      comentario = await generateComment(cfg, profileWithQual);
-    } catch (err) {
-      comentario = `(Erro ao gerar comentário: ${err.message})`;
-    }
-
-    await saveProfile({
-      ...profileData,
-      pontuacao_icp:      qual.pontuacao,
-      justificativa_icp:  qual.justificativa,
-      nicho_detectado:    qual.nicho || null,
-      mensagem_icebreaker: icebreaker,
-      mensagem_hook:       hook,
-      // mantém mensagem_gerada apontando para o icebreaker (compatibilidade com envio DM)
-      mensagem_gerada:     icebreaker,
-      comentario_gerado:   comentario,
-    });
-
-    // Envio automático ao webhook (se configurado)
-    if (cfg.webhookAuto && cfg.webhookApiKey?.trim()) {
-      const savedProfiles = await getProfiles();
-      const savedProfile  = savedProfiles.find(p => p.username === profileData.username);
-      if (savedProfile) {
-        sendLead(cfg, savedProfile)
-          .then(() => {
-            updateProfileWebhookStatus(profileData.username, 'enviado');
-            broadcast({ type: 'WEBHOOK_SENT', username: profileData.username });
-          })
-          .catch(err => {
-            updateProfileWebhookStatus(profileData.username, 'erro', err.message);
-            broadcast({ type: 'WEBHOOK_ERROR', username: profileData.username, error: err.message });
-          });
-      }
-    }
-
-    // Blacklist: nunca processar de novo
-    await addToBlacklist(profileData.username);
-
-    // Histórico
-    await addToHistory({
-      username:   profileData.username,
-      nome:       profileData.nome,
-      seguidores: profileData.seguidores,
-      pontuacao:  qual.pontuacao,
-      resultado:  'aprovado',
-    });
-
-    stats.approved = (stats.approved || 0) + 1;
-    await saveStats(stats);
-
-    const entry = {
-      action: 'approved',
-      username: profileData.username,
-      pontuacao: qual.pontuacao,
-      ...stats,
-    };
-    await appendLog(entry);
-    broadcast({ type: 'PROGRESS', ...entry });
-
-    // Meta atingida
-    const meta = cfg.metaPerfis || 20;
-    if (stats.approved >= meta) {
-      await stopProspecting();
-      broadcast({ type: 'PROGRESS', action: 'complete', approved: stats.approved });
-    }
-  } else {
-    // Graylist: ignorar por 30 dias
-    await addToGraylist(profileData.username);
-
-    // Histórico
-    await addToHistory({
-      username:   profileData.username,
-      nome:       profileData.nome,
-      seguidores: profileData.seguidores,
-      pontuacao:  qual.pontuacao,
-      resultado:  'descartado',
-    });
-
-    const entry = {
-      action: 'rejected',
-      username: profileData.username,
-      pontuacao: qual.pontuacao,
-      ...stats,
-    };
-    await appendLog(entry);
-    broadcast({ type: 'PROGRESS', ...entry });
-  }
-
-  return { approved, pontuacao: qual.pontuacao };
+  return processProfileLocal(profileData, cfg, stats);
 }
 
-// ─── Atualizar status de um perfil ───────────────────────────────────────
+// ─── Pipeline novo: filtros locais + score local, ZERO tokens OpenAI ──────
+async function processProfileLocal(profileData, cfg, stats) {
+  const filters = buildFiltersFromSettings(cfg);
+
+  const gate = passesFilters(profileData, filters);
+  if (!gate.passed) {
+    await addToGraylist(profileData.username);
+    await addToHistory({
+      username:   profileData.username,
+      nome:       profileData.nome,
+      seguidores: profileData.seguidores,
+      pontuacao:  0,
+      resultado:  'descartado',
+      motivo:     gate.reason,
+      motivo_detail: gate.detail || null,
+    });
+    const newCount = await incrementStat('descartados_local');
+    const entry = {
+      action:    'filter_reject',
+      username:  profileData.username,
+      reason:    gate.reason,
+      detail:    gate.detail || null,
+      descartados_local: newCount,
+      ...stats,
+    };
+    await appendLog(entry);
+    broadcast({ type: 'PROGRESS', ...entry });
+    return { approved: false, reason: gate.reason };
+  }
+
+  const { score, breakdown } = calculateScore(profileData, filters);
+
+  // Extração de contatos (gated por toggle, default OFF)
+  const contatos = cfg.extrairContatos ? extractFromProfile(profileData) : null;
+
+  await saveProfile({
+    ...profileData,
+    score_local:     score,
+    score_breakdown: breakdown,
+    ...(contatos ? { contatos } : {}),
+  });
+
+  await addToBlacklist(profileData.username);
+  await addToHistory({
+    username:   profileData.username,
+    nome:       profileData.nome,
+    seguidores: profileData.seguidores,
+    pontuacao:  score,
+    resultado:  'aprovado',
+  });
+  const newApproved = await incrementStat('aprovados_local');
+  stats.approved = (stats.approved || 0) + 1;
+  await saveStats(stats);
+
+  // Auto-webhook (envia mesmo sem mensagens — flag tem_mensagens=false)
+  if (cfg.webhookAuto && cfg.webhookApiKey?.trim()) {
+    const savedProfiles = await getProfiles();
+    const saved = savedProfiles.find(p => p.username === profileData.username);
+    if (saved) {
+      sendLead(cfg, saved)
+        .then(() => {
+          updateProfileWebhookStatus(profileData.username, 'enviado');
+          broadcast({ type: 'WEBHOOK_SENT', username: profileData.username });
+        })
+        .catch(err => {
+          updateProfileWebhookStatus(profileData.username, 'erro', err.message);
+          broadcast({ type: 'WEBHOOK_ERROR', username: profileData.username, error: err.message });
+        });
+    }
+  }
+
+  const entry = {
+    action:   'local_approved',
+    username: profileData.username,
+    score,
+    aprovados_local: newApproved,
+    ...stats,
+  };
+  await appendLog(entry);
+  broadcast({ type: 'PROGRESS', ...entry });
+
+  return { approved: true, score };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  GERAÇÃO DE MENSAGENS SOB DEMANDA
+// ═══════════════════════════════════════════════════════════════════════════
+async function generateMessagesFor(usernames) {
+  const cfg = await getSettings();
+  if (!cfg.openaiKey?.trim()) throw new Error('Chave OpenAI não configurada nas Configurações');
+  if (!Array.isArray(usernames) || !usernames.length) throw new Error('Nenhum perfil selecionado');
+
+  const profiles = await getProfiles();
+  const results = [];
+
+  for (const username of usernames) {
+    const profile = profiles.find(p => p.username === username);
+    if (!profile) {
+      results.push({ username, ok: false, error: 'perfil não encontrado' });
+      continue;
+    }
+    if (profile.mensagem_icebreaker && profile.mensagem_hook) {
+      results.push({ username, ok: true, skipped: 'já tem mensagens' });
+      continue;
+    }
+
+    broadcast({ type: 'MESSAGES_GENERATING', username });
+    try {
+      const just = profile.justificativa_icp || null;
+      const [ice, hook] = await Promise.all([
+        generateIcebreaker(cfg, profile, just),
+        generateHook(cfg, profile, just),
+      ]);
+      let comment = '';
+      try { comment = await generateComment(cfg, profile); }
+      catch (_) { comment = ''; }
+
+      await saveProfile({
+        username,
+        mensagem_icebreaker:  ice,
+        mensagem_hook:        hook,
+        mensagem_gerada:      ice,
+        comentario_gerado:    comment,
+        mensagens_geradas_em: Date.now(),
+      });
+      await incrementStat('mensagens_geradas');
+      results.push({ username, ok: true });
+      broadcast({ type: 'MESSAGES_GENERATED', username });
+    } catch (err) {
+      results.push({ username, ok: false, error: err.message });
+      broadcast({ type: 'MESSAGES_FAILED', username, error: err.message });
+    }
+  }
+
+  return { results };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DETECÇÃO DE BLOQUEIO DO INSTAGRAM (state machine 2h → retoma → definitivo)
+// ═══════════════════════════════════════════════════════════════════════════
+async function reportIgFetchFailure({ status, body }) {
+  const classified = classifyFailure({ status, body });
+  if (!classified) return { blocked: false };
+
+  _failureBuffer.push(classified);
+  if (_failureBuffer.length > 10) _failureBuffer.shift();
+
+  const { blocked, reason } = shouldTriggerBlock(_failureBuffer);
+  if (blocked) await triggerBlockPause(reason);
+  return { blocked, reason };
+}
+
+async function triggerBlockPause(reason) {
+  const stats = await getStats();
+  const newCount = (stats.bloqueio_count || 0) + 1;
+  const msg = blockMessage(reason);
+
+  // Pede content.js pra parar a coleta em curso
+  if (igTabId) {
+    try { await sendToContent(igTabId, { type: 'STOP_COLLECTION' }); } catch (_) {}
+  }
+  chrome.alarms.clear('blockResume').catch(() => {});
+
+  if (newCount >= 2) {
+    // Segundo bloqueio na sessão → definitivo
+    await saveStats({
+      active: false,
+      bloqueio_definitivo: true,
+      bloqueio_count: newCount,
+      bloqueio_last_reason: reason,
+      bloqueio_paused_until: null,
+    });
+    appendLog({ action: 'ig_block_definitive', reason, message: msg });
+    broadcast({ type: 'PROGRESS', action: 'ig_block_definitive', reason, message: msg });
+    broadcast({ type: 'IG_BLOCK_DEFINITIVE', reason, message: msg });
+  } else {
+    const pauseMs = 2 * 60 * 60 * 1000; // 2h
+    const until = Date.now() + pauseMs;
+    await saveStats({
+      active: false,
+      bloqueio_count: newCount,
+      bloqueio_paused_until: until,
+      bloqueio_last_reason: reason,
+    });
+    chrome.alarms.create('blockResume', { when: until });
+    appendLog({ action: 'ig_block_paused', reason, until, message: msg });
+    broadcast({ type: 'PROGRESS', action: 'ig_block_paused', reason, until, message: msg });
+    broadcast({ type: 'IG_BLOCK_PAUSED', reason, until, message: msg });
+  }
+}
+
+async function resumeFromBlock() {
+  const stats = await getStats();
+  if (stats.bloqueio_definitivo) return;
+  if (!stats.bloqueio_paused_until) return;
+
+  await saveStats({ active: true, bloqueio_paused_until: null });
+  _failureBuffer.length = 0;
+
+  appendLog({ action: 'ig_block_resumed', count: stats.bloqueio_count });
+  broadcast({ type: 'PROGRESS', action: 'ig_block_resumed', count: stats.bloqueio_count });
+  broadcast({ type: 'IG_BLOCK_RESUMED' });
+
+  runNextSource().catch(err => console.error('[IsiHunter BG] resume failed:', err));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  HANDLERS RESTANTES
+// ═══════════════════════════════════════════════════════════════════════════
+
 async function updateStatus(username, status) {
   await updateProfileStatus(username, status);
   return {};
 }
 
-// ─── Limpar todos os perfis ───────────────────────────────────────────────
 async function clearAll() {
   await clearProfiles();
   await clearLog();
   await clearHistory();
-  await saveStats({ active: false, processed: 0, approved: 0 });
+  await saveStats({
+    active: false, processed: 0, approved: 0,
+    descartados_local: 0, aprovados_local: 0, mensagens_geradas: 0,
+    hashtag_list: [], hashtag_idx: 0,
+    bloqueio_count: 0, bloqueio_paused_until: null, bloqueio_definitivo: false,
+  });
   return {};
 }
 
-// ─── Iniciar envio de DM ─────────────────────────────────────────────────
 async function initiateDM(username, message) {
-  // Garante que temos uma aba do Instagram
   if (!igTabId) {
     const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
     if (igTabs.length > 0) {
@@ -384,20 +679,16 @@ async function initiateDM(username, message) {
     }
   }
 
-  // Navega até a página de DM
   await chrome.tabs.update(igTabId, {
     url: 'https://www.instagram.com/direct/new/',
     active: true,
   });
   await waitForTabLoad(igTabId);
 
-  // Diz ao content script para enviar a mensagem
   await sendToContent(igTabId, { type: 'SEND_DM', username, message });
-
   return {};
 }
 
-// ─── Iniciar comentário no post ──────────────────────────────────────────
 async function initiatePostComment(username, postUrl, comment) {
   if (!postUrl) throw new Error('URL do post não disponível para @' + username);
 
@@ -419,14 +710,12 @@ async function initiatePostComment(username, postUrl, comment) {
   return {};
 }
 
-// ─── Comentário postado com sucesso (reportado pelo content script) ───────
 async function onCommentPosted(username) {
   await updateProfileStatus(username, 'comentario_enviado');
   broadcast({ type: 'COMMENT_POSTED', username });
   return {};
 }
 
-// ─── Envio manual de lead para webhook ───────────────────────────────────
 async function dispatchWebhook(username) {
   const cfg      = await getSettings();
   const profiles = await getProfiles();
@@ -439,7 +728,6 @@ async function dispatchWebhook(username) {
   return {};
 }
 
-// ─── Atualiza status do webhook no perfil ────────────────────────────────
 async function updateProfileWebhookStatus(username, status, errorMsg) {
   const profiles = await getProfiles();
   const idx = profiles.findIndex(p => p.username === username);
@@ -450,18 +738,28 @@ async function updateProfileWebhookStatus(username, status, errorMsg) {
   }
 }
 
-// ─── DM enviado com sucesso (reportado pelo content script) ───────────────
 async function onDmSent(username) {
   await updateProfileStatus(username, 'mensagem_enviada');
   broadcast({ type: 'DM_SENT', username });
   return {};
 }
 
-// ─── Verifica se o estado `active` é real ou zumbi ──────────────────────
-// Chamado pelo popup ao abrir; se stats.active=true mas nenhum content script
-// está coletando, reseta para false para destravar o botão "Iniciar".
 async function checkActiveState() {
   const stats = await getStats();
+
+  // Bloqueio pendente — popup precisa saber pra mostrar countdown
+  if (stats.bloqueio_paused_until && Date.now() < stats.bloqueio_paused_until) {
+    return {
+      active: false,
+      blocked: true,
+      until: stats.bloqueio_paused_until,
+      reason: stats.bloqueio_last_reason,
+    };
+  }
+  if (stats.bloqueio_definitivo) {
+    return { active: false, blockedDefinitive: true, reason: stats.bloqueio_last_reason };
+  }
+
   if (!stats.active) return { active: false };
 
   const igTabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
@@ -474,35 +772,115 @@ async function checkActiveState() {
     try {
       const res = await sendToContent(tab.id, { type: 'PING' });
       if (res?.collectingActive) {
-        igTabId = tab.id; // refresca referência
+        igTabId = tab.id;
         return { active: true };
       }
-    } catch (_) { /* content script não responde nesta aba */ }
+    } catch (_) {}
   }
 
-  // Nenhuma aba está coletando — estado zumbi
   await saveStats({ active: false });
   return { active: false, reason: 'not_collecting' };
 }
 
-// ─── Coleta encerrada naturalmente (sem mais páginas) ────────────────────
+// Coleta de UMA iteração terminou — avança dentro da source atual ou pra próxima
 async function onCollectionDone() {
   const stats = await getStats();
-  await saveStats({ active: false });
-  const entry = { action: 'collection_done', approved: stats.approved };
-  await appendLog(entry);
-  broadcast({ type: 'PROGRESS', ...entry });
+  const sources = stats.sources || [];
+  const sIdx = stats.source_idx || 0;
+  const currentSource = sources[sIdx];
+
+  if (!currentSource) {
+    // Sem sessão ativa (ou triagem por lista) — encerra
+    await saveStats({ active: false });
+    appendLog({ action: 'collection_done', approved: stats.approved });
+    broadcast({ type: 'PROGRESS', action: 'collection_done', approved: stats.approved });
+    return {};
+  }
+
+  if (currentSource.type === 'hashtag') {
+    const list = currentSource.list || [];
+    const nextHidx = (stats.hashtag_idx || 0) + 1;
+
+    if (nextHidx < list.length) {
+      const done = list[nextHidx - 1];
+      const next = list[nextHidx];
+      await saveStats({ hashtag_idx: nextHidx });
+      appendLog({ action: 'hashtag_done', hashtag: done, next });
+      broadcast({ type: 'PROGRESS', action: 'hashtag_done', hashtag: done, next });
+      setTimeout(() => runHashtagSource(currentSource).catch(console.error), 5000);
+      return {};
+    }
+    // Hashtags exauridas — fecha source e avança
+    await saveStats({ source_idx: sIdx + 1, hashtag_idx: 0 });
+    appendLog({ action: 'source_done', source: 'hashtag' });
+    broadcast({ type: 'PROGRESS', action: 'source_done', source: 'hashtag' });
+  } else if (currentSource.type === 'seguidores') {
+    await saveStats({ source_idx: sIdx + 1 });
+    appendLog({ action: 'source_done', source: 'seguidores', perfil: currentSource.perfil });
+    broadcast({ type: 'PROGRESS', action: 'source_done', source: 'seguidores', perfil: currentSource.perfil });
+  } else if (currentSource.type === 'engajamento') {
+    await saveStats({ source_idx: sIdx + 1 });
+    appendLog({ action: 'source_done', source: 'engajamento', perfil: currentSource.perfil });
+    broadcast({ type: 'PROGRESS', action: 'source_done', source: 'engajamento', perfil: currentSource.perfil });
+  } else if (currentSource.type === 'palavras_chave') {
+    await saveStats({ source_idx: sIdx + 1 });
+    appendLog({ action: 'source_done', source: 'palavras_chave', keywords: currentSource.keywords });
+    broadcast({ type: 'PROGRESS', action: 'source_done', source: 'palavras_chave', keywords: currentSource.keywords });
+  } else {
+    await saveStats({ source_idx: sIdx + 1 });
+  }
+
+  setTimeout(() => runNextSource().catch(console.error), 5000);
   return {};
 }
 
-// ─── Erro na coleta ──────────────────────────────────────────────────────
 async function onCollectionError(error) {
   await saveStats({ active: false });
   broadcast({ type: 'PROGRESS', action: 'collection_error', error });
   return {};
 }
 
-// ─── Utilitários ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildFiltersFromSettings(cfg) {
+  return {
+    seguidoresMin:      numOrNull(cfg.filtroSeguidoresMin),
+    seguidoresMax:      numOrNull(cfg.filtroSeguidoresMax),
+    keywords:           cfg.filtroKeywords || '',
+    ultimoPostDiasMax:  numOrNull(cfg.filtroUltimoPostDias),
+    postsMin:           numOrNull(cfg.filtroPostsMin),
+    postsDias:          numOrNull(cfg.filtroPostsDias),
+    engajamentoMin:     numOrNull(cfg.filtroEngajamentoMin),
+  };
+}
+
+function numOrNull(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseHashtagList(csv) {
+  if (!csv) return [];
+  return [...new Set(
+    String(csv).split(',')
+      .map(h => h.trim().replace(/^#/, '').replace(/\s+/g, '').toLowerCase())
+      .filter(Boolean)
+  )].slice(0, 10);
+}
+
+// Parse genérico de CSV (mantém espaços internos, usado para palavras-chave de busca)
+function parseCsvList(csv) {
+  if (!csv) return [];
+  return [...new Set(
+    String(csv).split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.toLowerCase())
+  )];
+}
 
 function broadcast(data) {
   chrome.runtime.sendMessage(data).catch(() => {
@@ -530,7 +908,6 @@ function waitForTabLoad(tabId) {
   return new Promise(resolve => {
     chrome.tabs.get(tabId, tab => {
       if (chrome.runtime.lastError || !tab) return resolve();
-      // Aba já carregada — aguarda só o React inicializar
       if (tab.status === 'complete') return setTimeout(resolve, 1500);
 
       const fallback = setTimeout(() => {

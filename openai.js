@@ -1,67 +1,22 @@
 // openai.js — módulo de integração com a API da OpenAI
-// Importado como ES Module por background.js
+// Importado como ES Module por background.js. Usado SOMENTE pra gerar
+// mensagens sob demanda (quebra-gelo, gancho, comentário) — qualificação
+// de perfil é feita 100% localmente em filters.js + score.js.
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const MODEL    = 'gpt-4o';
 
-// ─── Qualificação de perfil ────────────────────────────────────────────────
-
-export async function qualifyProfile(settings, profile) {
-  const minScore = settings.pontuacaoMinima ?? 7;
-
-  const prompt = `Você é um especialista em qualificação de leads para vendas B2C e B2B no Instagram.
-
-Analise o perfil abaixo e avalie se ele tem fit com o ICP e o produto descrito.
-
-ICP (Perfil de Cliente Ideal): ${settings.icp}
-Produto/Serviço oferecido: ${settings.produto}
-
-Dados do perfil:
-- Nome: ${profile.nome}
-- Username: @${profile.username}
-- Bio: ${profile.bio}
-- Seguidores: ${profile.seguidores}
-- Legenda do último post: ${profile.ultimo_post_legenda || '(não disponível)'}
-
-Retorne APENAS um JSON válido no seguinte formato, sem nenhum texto adicional:
-{
-  "pontuacao": <número inteiro de 0 a 10>,
-  "aprovado": <true se pontuacao >= ${minScore}, false se menor>,
-  "justificativa": "<explicação objetiva em 2 a 3 frases de por que o perfil tem ou não tem fit com o ICP e o produto>",
-  "nicho": "<nicho ou segmento de mercado do perfil em até 5 palavras, ex: 'coach de carreira', 'nutricionista esportivo', 'agência de marketing digital' — ou null se não for possível identificar>",
-  "idioma": "<código ISO 639-1 do idioma predominante da bio e do último post, ex: pt, en, es, fr, it, de>"
-}
-
-A pontuação deve considerar:
-- Aderência ao nicho descrito no ICP
-- Tamanho e tipo de audiência
-- Sinais de dor ou contexto no conteúdo (bio + legenda do post)
-- Compatibilidade com o produto oferecido`;
-
-  const data = await callOpenAI(settings.openaiKey, prompt, {
-    temperature: 0.3,
-    response_format: { type: 'json_object' },
-  });
-
-  const content = data.choices[0].message.content;
-  const parsed = JSON.parse(content);
-
-  // Garante que o campo aprovado seja consistente com a pontuação
-  parsed.aprovado = parsed.pontuacao >= minScore;
-  return parsed;
-}
-
 // ─── Mensagem quebra-gelo ─────────────────────────────────────────────────
 
 export async function generateIcebreaker(settings, profile, justificativa) {
+  const fitLine = justificativa ? `Motivo do fit com o ICP: ${justificativa}\n` : '';
   const basePrompt = `Você é um especialista em prospecção humanizada no Instagram.
 
 Gere uma mensagem de Direct QUEBRA-GELO para enviar ao perfil abaixo.
 
 Produto/Serviço oferecido: ${settings.produto}
 ICP: ${settings.icp}
-Motivo do fit com o ICP: ${justificativa}
-
+${fitLine}
 Dados do perfil:
 - Nome: ${profile.nome}
 - Username: @${profile.username}
@@ -79,7 +34,7 @@ Regras absolutas:
 
   // Usa prompt customizado se o usuário configurou
   const finalPrompt = settings.promptIcebreaker
-    ? `${settings.promptIcebreaker}\n\n---\nDados do perfil:\n- Nome: ${profile.nome}\n- Bio: ${profile.bio}\n- Legenda do último post: ${profile.ultimo_post_legenda || '(não disponível)'}\n- Motivo do fit: ${justificativa}\n\nRetorne APENAS a mensagem.`
+    ? `${settings.promptIcebreaker}\n\n---\nDados do perfil:\n- Nome: ${profile.nome}\n- Bio: ${profile.bio}\n- Legenda do último post: ${profile.ultimo_post_legenda || '(não disponível)'}${justificativa ? `\n- Motivo do fit: ${justificativa}` : ''}\n\nRetorne APENAS a mensagem.`
     : `${basePrompt}\n\nRetorne APENAS a mensagem, sem comentários adicionais.`;
 
   const data = await callOpenAI(settings.openaiKey, finalPrompt, { temperature: 0.8 });
@@ -89,14 +44,14 @@ Regras absolutas:
 // ─── Mensagem gancho ──────────────────────────────────────────────────────
 
 export async function generateHook(settings, profile, justificativa) {
+  const fitLine = justificativa ? `Motivo do fit com o ICP: ${justificativa}\n` : '';
   const basePrompt = `Você é um especialista em copywriting de alta conversão no Instagram.
 
 Gere uma mensagem de Direct GANCHO para enviar ao perfil abaixo.
 
 Produto/Serviço oferecido: ${settings.produto}
 ICP: ${settings.icp}
-Motivo do fit com o ICP: ${justificativa}
-
+${fitLine}
 Dados do perfil:
 - Nome: ${profile.nome}
 - Username: @${profile.username}
@@ -114,7 +69,7 @@ Regras absolutas:
 - Não mencione que é automação ou IA`;
 
   const finalPrompt = settings.promptHook
-    ? `${settings.promptHook}\n\n---\nDados do perfil:\n- Nome: ${profile.nome}\n- Bio: ${profile.bio}\n- Legenda do último post: ${profile.ultimo_post_legenda || '(não disponível)'}\n- Motivo do fit: ${justificativa}\n\nRetorne APENAS a mensagem.`
+    ? `${settings.promptHook}\n\n---\nDados do perfil:\n- Nome: ${profile.nome}\n- Bio: ${profile.bio}\n- Legenda do último post: ${profile.ultimo_post_legenda || '(não disponível)'}${justificativa ? `\n- Motivo do fit: ${justificativa}` : ''}\n\nRetorne APENAS a mensagem.`
     : `${basePrompt}\n\nRetorne APENAS a mensagem, sem comentários adicionais.`;
 
   const data = await callOpenAI(settings.openaiKey, finalPrompt, { temperature: 0.75 });
