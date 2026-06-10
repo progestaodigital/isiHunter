@@ -180,6 +180,9 @@ function buildKanbanCard(profile) {
   const noteCount = (profile.kanban_notes || []).length;
   const hasMsgs   = !!((profile.mensagem_icebreaker || profile.mensagem_gerada || '').trim());
   const pic       = pickProfilePic(profile);
+  const c         = profile.contatos || {};
+  const hasEmail  = !!(c.emails    && c.emails.length);
+  const hasWa     = !!((c.whatsapps && c.whatsapps.length) || (c.grupos_whatsapp && c.grupos_whatsapp.length));
   const addedRel  = profile.kanban_added_at      ? formatRelativeShort(profile.kanban_added_at)      : '';
   const lastRel   = profile.kanban_last_action_at ? formatRelativeShort(profile.kanban_last_action_at) : '';
 
@@ -199,6 +202,8 @@ function buildKanbanCard(profile) {
     <div class="kanban-card-meta">
       ${profile.seguidores ? `<span>👥 ${escHtml(profile.seguidores)}</span>` : ''}
       ${profile.engajamento_pct != null ? `<span>💬 ${Number(profile.engajamento_pct).toFixed(1)}%</span>` : ''}
+      ${hasWa ? `<span class="kanban-card-contactflag wa" title="WhatsApp encontrado">📱</span>` : ''}
+      ${hasEmail ? `<span class="kanban-card-contactflag email" title="E-mail encontrado">📧</span>` : ''}
       ${hasMsgs ? `<span class="kanban-card-msgflag">✨ msgs</span>` : ''}
       ${noteCount ? `<span class="kanban-card-noteflag">📝 ${noteCount}</span>` : ''}
     </div>
@@ -282,6 +287,8 @@ export function openKanbanDetail(username) {
   renderKanbanProfileBio(profile);
   // Motivo da aprovação (score breakdown)
   renderKanbanApprovalReason(profile);
+  // Contatos extraídos (email, WhatsApp, telefone, grupos WA)
+  renderKanbanContacts(profile);
 
   // Datas
   const addedEl  = document.getElementById('kanban-detail-added');
@@ -381,6 +388,79 @@ function renderKanbanApprovalReason(profile) {
         </div>
       `;
     }).join('');
+}
+
+function renderKanbanContacts(profile) {
+  const section = document.getElementById('kanban-contacts-section');
+  const list    = document.getElementById('kanban-contacts-list');
+  if (!section || !list) return;
+
+  const c = profile.contatos || {};
+  const emails    = Array.isArray(c.emails)          ? c.emails          : [];
+  const whatsapps = Array.isArray(c.whatsapps)       ? c.whatsapps       : [];
+  const grupos    = Array.isArray(c.grupos_whatsapp) ? c.grupos_whatsapp : [];
+  const phones    = (Array.isArray(c.phones) ? c.phones : []).filter(p => !whatsapps.includes(p));
+
+  const has = emails.length || whatsapps.length || grupos.length || phones.length;
+  if (!has) {
+    section.classList.add('hidden');
+    list.innerHTML = '';
+    return;
+  }
+  section.classList.remove('hidden');
+
+  const escAttr = (s) => escHtml(String(s || ''));
+
+  const emailRows = emails.map(e => `
+    <a class="contact-pill email" href="mailto:${escAttr(e)}" title="Enviar e-mail">
+      <span class="contact-icon">📧</span>
+      <span class="contact-value">${escHtml(e)}</span>
+      <button class="contact-copy" data-copy="${escAttr(e)}" title="Copiar">📋</button>
+    </a>
+  `).join('');
+
+  const waRows = whatsapps.map(w => {
+    const digits = String(w).replace(/^\+/, '');
+    return `
+      <a class="contact-pill whatsapp" href="https://wa.me/${escAttr(digits)}" target="_blank" rel="noopener" title="Abrir WhatsApp">
+        <span class="contact-icon">📱</span>
+        <span class="contact-value">${escHtml(w)}</span>
+        <button class="contact-copy" data-copy="${escAttr(w)}" title="Copiar">📋</button>
+      </a>
+    `;
+  }).join('');
+
+  const phoneRows = phones.map(p => `
+    <div class="contact-pill phone">
+      <span class="contact-icon">☎️</span>
+      <span class="contact-value">${escHtml(p)}</span>
+      <button class="contact-copy" data-copy="${escAttr(p)}" title="Copiar">📋</button>
+    </div>
+  `).join('');
+
+  const grupoRows = grupos.map(g => `
+    <a class="contact-pill whatsapp" href="${escAttr(g)}" target="_blank" rel="noopener" title="Abrir grupo WhatsApp">
+      <span class="contact-icon">👥</span>
+      <span class="contact-value">Grupo WhatsApp</span>
+    </a>
+  `).join('');
+
+  list.innerHTML = waRows + emailRows + phoneRows + grupoRows;
+
+  // Handlers de copy
+  list.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const value = btn.getAttribute('data-copy');
+      try {
+        await navigator.clipboard.writeText(value);
+        const original = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(() => btn.textContent = original, 1200);
+      } catch (_) {}
+    });
+  });
 }
 
 function formatNumber(n) {

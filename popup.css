@@ -1970,6 +1970,68 @@ button.disabled-license {
 .approval-bar-fill.good { background: linear-gradient(90deg, #22c55e, #4ade80); }
 .approval-bar-fill.mid  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 .approval-bar-fill.low  { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+/* ─── Contatos extraídos no drawer do Kanban ─────────────────────── */
+.kanban-contacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.contact-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  font-size: .82rem;
+  transition: border-color .15s ease, background .15s ease;
+}
+.contact-pill:hover {
+  border-color: rgba(168, 85, 247, .5);
+  background: rgba(168, 85, 247, .06);
+}
+.contact-pill.whatsapp:hover { border-color: #22c55e; background: rgba(34, 197, 94, .08); }
+.contact-pill.email:hover    { border-color: #3b82f6; background: rgba(59, 130, 246, .08); }
+.contact-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.contact-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: .78rem;
+}
+.contact-copy {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: .8rem;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.contact-copy:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Badges no card compacto */
+.kanban-card-contactflag {
+  display: inline-flex;
+  align-items: center;
+  font-size: .78rem;
+}
+.kanban-card-contactflag.wa    { color: #22c55e; }
+.kanban-card-contactflag.email { color: #60a5fa; }
 .approval-score {
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: .76rem;
