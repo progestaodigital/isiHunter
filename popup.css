@@ -75,6 +75,63 @@ body {
   color: var(--text-dim);
 }
 
+/* ── Update banner ─────────────────────────────────────────── */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, .15), rgba(236, 72, 153, .12));
+  border: 1px solid rgba(168, 85, 247, .4);
+  border-radius: 8px;
+  animation: updateFadeIn .25s ease-out;
+}
+@keyframes updateFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.update-banner-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.update-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+.update-banner-title {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.update-banner-sub {
+  font-size: .7rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.update-banner-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.update-banner-dismiss:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, .08);
+}
+
 /* ── Tabs ──────────────────────────────────────────────────── */
 .tabs {
   display: flex;

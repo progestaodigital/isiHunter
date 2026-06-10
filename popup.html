@@ -25,8 +25,21 @@
       </svg>
       <span>IsiHunter</span>
     </div>
-    <span class="header-version">v1.3</span>
+    <span class="header-version" id="header-version">v1.4</span>
   </header>
+
+  <!-- ───── Banner de atualização disponível ─────────────────────── -->
+  <div class="update-banner hidden" id="update-banner">
+    <div class="update-banner-icon">🎉</div>
+    <div class="update-banner-text">
+      <div class="update-banner-title">Nova versão disponível</div>
+      <div class="update-banner-sub" id="update-banner-versions"></div>
+    </div>
+    <div class="update-banner-actions">
+      <a class="btn btn-primary btn-sm" id="update-banner-download" target="_blank" rel="noopener" href="#">Ver release</a>
+      <button class="update-banner-dismiss" id="update-banner-dismiss" title="Dispensar até a próxima versão">×</button>
+    </div>
+  </div>
 
   <!-- ───── Tabs ─────────────────────────────────────────────────── -->
   <nav class="tabs">
@@ -85,7 +98,7 @@
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z"/>
         </svg>
-        Iniciar Prospecção
+        <span id="btn-start-label">Iniciar Caça</span>
       </button>
       <button class="btn btn-danger hidden" id="btn-stop">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -169,7 +182,7 @@
       <button class="btn-link" id="btn-clear-log">Limpar</button>
     </div>
     <div class="log" id="log-area">
-      <div class="log-empty">Inicie a prospecção para ver o progresso aqui.</div>
+      <div class="log-empty">Inicie a caça para ver o progresso aqui.</div>
     </div>
 
     <!-- Erro global -->
@@ -341,7 +354,7 @@
 
     <div class="profiles-list" id="profiles-list">
       <div class="list-empty">
-        Nenhum perfil aprovado ainda. Inicie a prospecção na aba Busca.
+        Nenhum perfil aprovado ainda. Inicie a caça na aba Busca.
       </div>
     </div>
   </section>
@@ -698,6 +711,6 @@
 
 </div><!-- /.app -->
 
-<script type="module" src="popup.js?v=31"></script>
+<script type="module" src="popup.js?v=33"></script>
 </body>
 </html>

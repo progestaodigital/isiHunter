@@ -20,8 +20,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   initHistory();
   initKanbanLauncher();
   initLicense();
+  initUpdateBanner();
   listenForProgress();
   updateKanbanBadge();
+  refreshUpdateBanner();
+  updateStartButtonLabel();
 
   // Refresca estado da licença ao abrir o popup (silent = usa cache fresco)
   await refreshLicenseUI({ silent: true });
@@ -44,6 +47,56 @@ function switchTab(name) {
   });
   if (name === 'list')     { refreshList(); updateKanbanBadge(); }
   if (name === 'history')  refreshHistory();
+}
+
+// ─── Banner de atualização (GitHub Releases) ─────────────────────────────
+function initUpdateBanner() {
+  // Versão atual no header
+  const verEl = document.getElementById('header-version');
+  if (verEl) verEl.textContent = 'v' + (chrome.runtime.getManifest().version || '');
+
+  document.getElementById('update-banner-dismiss')?.addEventListener('click', async () => {
+    const info = await getCurrentUpdateInfo();
+    if (info?.latest) await sendToBg({ type: 'DISMISS_UPDATE', version: info.latest });
+    document.getElementById('update-banner')?.classList.add('hidden');
+  });
+}
+
+async function refreshUpdateBanner() {
+  // Boot: lê cache. Se vazio, pede check fresco (1x).
+  let res = await sendToBg({ type: 'GET_UPDATE_INFO' });
+  let info = res?.info;
+  if (!info) {
+    res = await sendToBg({ type: 'CHECK_VERSION' });
+    info = res?.info;
+  }
+  renderUpdateBanner(info);
+}
+
+function renderUpdateBanner(info) {
+  const banner = document.getElementById('update-banner');
+  if (!banner || !info?.available) {
+    banner?.classList.add('hidden');
+    return;
+  }
+
+  // Respeita dismissal: se o usuário dispensou esta exata versão, esconde
+  chrome.storage.local.get('isi_update_dismissed', (r) => {
+    if (r?.isi_update_dismissed === info.latest) {
+      banner.classList.add('hidden');
+      return;
+    }
+    const sub = document.getElementById('update-banner-versions');
+    const dl  = document.getElementById('update-banner-download');
+    if (sub) sub.textContent = `v${info.current} → v${info.latest}`;
+    if (dl)  dl.href = info.downloadUrl || '#';
+    banner.classList.remove('hidden');
+  });
+}
+
+async function getCurrentUpdateInfo() {
+  const r = await sendToBg({ type: 'GET_UPDATE_INFO' });
+  return r?.info;
 }
 
 // ─── Kanban launcher (abre a UI completa em nova aba do navegador) ───────
@@ -153,6 +206,7 @@ async function saveSearchSettings() {
   _metaCached                 = Number(cfg.metaLeads) || null;
   await saveSettings(cfg);
   showToast('search-toast', 'Configurações de busca salvas!', 'success');
+  updateStartButtonLabel();
 }
 
 async function saveMessagesSettings() {
@@ -392,7 +446,7 @@ async function startProspecting() {
   const res = await sendToBg({ type: 'START_PROSPECTING' });
   if (res?.ok === false) {
     if (res.error === 'license_required') { onLicenseDeniedDuringAction(res.license_status); btnStart.disabled = false; return; }
-    showError(res.error || 'Erro ao iniciar prospecção');
+    showError(res.error || 'Erro ao iniciar caça');
     btnStart.disabled = false;
     return;
   }
@@ -457,7 +511,7 @@ async function stopProspecting() {
   btnStart.disabled = false;
   hideCollectionBanner();
 
-  addLogEntry({ action: 'stopped', message: 'Prospecção interrompida pelo usuário.' });
+  addLogEntry({ action: 'stopped', message: 'Caça interrompida pelo usuário.' });
 }
 
 // ─── Restaura estado ao abrir o popup ────────────────────────────────────
@@ -516,6 +570,7 @@ function listenForProgress() {
     if (msg.type === 'MESSAGES_GENERATING')   handleMessagesGenerating(msg.username);
     if (msg.type === 'MESSAGES_GENERATED')    handleMessagesGenerated(msg.username);
     if (msg.type === 'MESSAGES_FAILED')       handleMessagesFailed(msg.username, msg.error);
+    if (msg.type === 'UPDATE_AVAILABLE')      renderUpdateBanner(msg.info);
   });
 }
 
@@ -565,7 +620,7 @@ function handleMessagesFailed(username, error) {
 
 function handleLicenseRevoked(status) {
   resetProspectingButtons();
-  addLogEntry({ action: 'error', message: 'Licença revogada — prospecção interrompida.' });
+  addLogEntry({ action: 'error', message: 'Licença revogada — caça interrompida.' });
   refreshLicenseUI({ silent: true });
   switchTab('license');
 }
@@ -681,7 +736,7 @@ function handleProgress(msg) {
     case 'complete':
       addLogEntry({
         action: 'complete',
-        message: `Meta atingida! ${approved} perfis aprovados. Prospecção encerrada.`,
+        message: `Meta atingida! ${approved} perfis aprovados. Caça encerrada.`,
       });
       resetProspectingButtons();
       hideCollectionBanner();
@@ -734,7 +789,7 @@ function handleProgress(msg) {
       break;
 
     case 'collection_done':
-      addLogEntry({ action: 'collection_done', message: `Prospecção encerrada. ${msg.approved || 0} aprovados.` });
+      addLogEntry({ action: 'collection_done', message: `Caça encerrada. ${msg.approved || 0} aprovados.` });
       resetProspectingButtons();
       hideCollectionBanner();
       break;
@@ -1085,6 +1140,7 @@ function initList() {
     updateStatsUI({ processed: 0, approved: 0, descartados: 0, mensagens: 0 });
     document.getElementById('stats-row').style.display = 'none';
     await updateKanbanBadge();
+    updateStartButtonLabel();
 
     const kept    = res?.kept_in_kanban || 0;
     const removed = res?.removed || 0;
@@ -1108,6 +1164,7 @@ async function refreshList() {
   // no Kanban, só somem da aba Aprovados).
   const profiles = (res?.profiles || []).filter(p => !p.hidden_from_list);
   renderProfiles(profiles);
+  updateStartButtonLabel();
 }
 
 async function renderProfiles(profiles) {
@@ -1118,7 +1175,7 @@ async function renderProfiles(profiles) {
   const selectAll    = document.getElementById('bulk-select-all');
 
   if (profiles.length === 0) {
-    container.innerHTML = '<div class="list-empty">Nenhum perfil aprovado ainda.<br>Inicie a prospecção na aba Busca.</div>';
+    container.innerHTML = '<div class="list-empty">Nenhum perfil aprovado ainda.<br>Inicie a caça na aba Busca.</div>';
     counter.textContent = 'Nenhum perfil aprovado ainda';
     if (bulkActions) bulkActions.classList.add('hidden');
     if (toolbar) toolbar.classList.add('hidden');
@@ -1511,9 +1568,9 @@ function addLogEntry(e = {}, scroll = true) {
       case 'local_approved':  message = `@${username} — score ${score}/10 — Aprovado ✓`; break;
       case 'filter_reject':   message = `@${username} — descartado: ${filterReasonLabel(reason, detail)}`; break;
       case 'rejected':    message = `@${username} — ${pontuacao}/10 — Descartado`; break;
-      case 'collection_done':  message = `Prospecção encerrada. ${e.approved || 0} aprovados.`; break;
-      case 'complete':    message = `Meta atingida! Prospecção encerrada.`; break;
-      case 'stopped':     message = 'Prospecção interrompida pelo usuário.'; break;
+      case 'collection_done':  message = `Caça encerrada. ${e.approved || 0} aprovados.`; break;
+      case 'complete':    message = `Meta atingida! Caça encerrada.`; break;
+      case 'stopped':     message = 'Caça interrompida pelo usuário.'; break;
       case 'long_pause':
         if (untilStr) {
           message = `⏸ Pausa anti-detecção${pausaSeg ? ` (~${pausaSeg}s)` : ''} — retoma às ${untilStr}`;
@@ -1562,7 +1619,7 @@ function scrollLogToBottom() {
 
 function clearLogUI() {
   document.getElementById('log-area').innerHTML =
-    '<div class="log-empty">Inicie a prospecção para ver o progresso aqui.</div>';
+    '<div class="log-empty">Inicie a caça para ver o progresso aqui.</div>';
 }
 
 function showStatsRow() {
@@ -1604,6 +1661,28 @@ function resetProspectingButtons() {
   document.getElementById('btn-start').classList.remove('hidden');
   document.getElementById('btn-start').disabled = false;
   document.getElementById('btn-stop').classList.add('hidden');
+  updateStartButtonLabel();
+}
+
+// Atualiza o label do botão Iniciar/Continuar baseado em quantos perfis
+// aprovados (visíveis na aba Aprovados) já existem.
+async function updateStartButtonLabel() {
+  const label = document.getElementById('btn-start-label');
+  if (!label) return;
+  try {
+    const res = await sendToBg({ type: 'GET_PROFILES' });
+    const visibleApproved = (res?.profiles || []).filter(p => !p.hidden_from_list).length;
+    if (visibleApproved > 0) {
+      const meta = _metaCached;
+      label.textContent = meta
+        ? `Continuar Caça (${visibleApproved}/${meta})`
+        : `Continuar Caça (${visibleApproved})`;
+    } else {
+      label.textContent = 'Iniciar Caça';
+    }
+  } catch (_) {
+    label.textContent = 'Iniciar Caça';
+  }
 }
 
 function showError(msg) {
@@ -1723,7 +1802,7 @@ function renderActivityBanner(stats) {
     // > 30min: travada. Provavelmente service worker reiniciou ou aba do IG quebrou.
     banner.dataset.state = 'stalled';
     title.textContent = '⚠ Sem resposta há ' + formatAgo(idleMs);
-    sub.textContent   = 'Possível trava. Clique em "Parar" e inicie a prospecção novamente.';
+    sub.textContent   = 'Possível trava. Clique em "Parar" e inicie a caça novamente.';
     timer.textContent = '';
   }
 }

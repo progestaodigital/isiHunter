@@ -40,6 +40,7 @@ import { passesFilters } from './filters.js';
 import { calculateScore } from './score.js';
 import { classifyFailure, shouldTriggerBlock, blockMessage } from './igBlockDetector.js';
 import { extractFromProfile, extractFromUrlsAndText, mergeContacts } from './contactExtractor.js';
+import { checkLatestVersion, getUpdateInfo, dismissUpdate } from './versionCheck.js';
 
 // ─── Estado em memória ────────────────────────────────────────────────────
 let igTabId = null;
@@ -47,6 +48,7 @@ const _failureBuffer = []; // últimas 10 falhas de fetch do IG (classificadas)
 
 // ─── Keep-alive + alarms ──────────────────────────────────────────────────
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
+chrome.alarms.create('versionCheck', { periodInMinutes: 60, when: Date.now() + 30_000 });
 ensureAlarm();
 chrome.alarms.onAlarm.addListener(async alarm => {
   if (alarm.name === 'keepAlive') {
@@ -56,6 +58,9 @@ chrome.alarms.onAlarm.addListener(async alarm => {
     if (r?.status !== 'valid') await __interruptOnRevocation(r);
   } else if (alarm.name === 'blockResume') {
     await resumeFromBlock();
+  } else if (alarm.name === 'versionCheck') {
+    const info = await checkLatestVersion().catch(() => null);
+    if (info?.available) broadcast({ type: 'UPDATE_AVAILABLE', info });
   }
 });
 
@@ -66,6 +71,11 @@ chrome.alarms.onAlarm.addListener(async alarm => {
     if (r?.status && r.status !== 'valid' && r.status !== 'no_key') {
       await __interruptOnRevocation(r);
     }
+  } catch (_) {}
+  // Checa nova versão no boot (cacheada 1h)
+  try {
+    const info = await checkLatestVersion();
+    if (info?.available) broadcast({ type: 'UPDATE_AVAILABLE', info });
   } catch (_) {}
 })();
 
@@ -149,6 +159,11 @@ async function route(msg, _sender) {
     case 'PROGRESS':                return handleProgress(msg);
     case 'PING':                    return { pong: true };
 
+    // ─── Atualização da extensão ────────────────────────────────────────
+    case 'GET_UPDATE_INFO':         return { info: await getUpdateInfo() };
+    case 'CHECK_VERSION':           return { info: await checkLatestVersion({ force: !!msg.force }) };
+    case 'DISMISS_UPDATE':          { await dismissUpdate(msg.version); return {}; }
+
     // ─── Kanban / CRM ───────────────────────────────────────────────────
     case 'KANBAN_GET_COLUMNS':      return { columns: await getKanbanColumns() };
     case 'KANBAN_ADD_COLUMN':       return { id: await addKanbanColumn(msg.name) };
@@ -200,14 +215,22 @@ async function startProspecting() {
     throw new Error('Configure ao menos uma fonte na aba Busca (Hashtags ou Seguidores)');
   }
 
-  // Reset stats + abre nova sessão
+  // Contagens acumulativas entre sessões. Só "Limpar tudo" zera.
+  const currentStats   = await getStats();
+  const allProfiles    = await getProfiles();
+  const carryApproved  = allProfiles.filter(p => !p.hidden_from_list).length;
+  const carryProcessed = Math.max(
+    currentStats.processed || 0,
+    carryApproved + (currentStats.descartados_local || 0)
+  );
+
   await saveStats({
     active: true,
-    processed: 0,
-    approved: 0,
-    descartados_local: 0,
-    aprovados_local: 0,
-    mensagens_geradas: 0,
+    processed:         carryProcessed,
+    approved:          carryApproved,
+    descartados_local: currentStats.descartados_local || 0,
+    aprovados_local:   carryApproved,
+    mensagens_geradas: currentStats.mensagens_geradas || 0,
     sources,
     source_idx: 0,
     hashtag_idx: 0,
@@ -388,12 +411,22 @@ async function runPalavrasChaveSource(source) {
 async function startListProspecting(usernames) {
   if (!usernames?.length) throw new Error('Lista de usuários vazia');
 
+  // Contagens acumulativas entre sessões. Só "Limpar tudo" zera.
+  const currentStats   = await getStats();
+  const allProfiles    = await getProfiles();
+  const carryApproved  = allProfiles.filter(p => !p.hidden_from_list).length;
+  const carryProcessed = Math.max(
+    currentStats.processed || 0,
+    carryApproved + (currentStats.descartados_local || 0)
+  );
+
   await saveStats({
     active: true,
-    processed: 0,
-    approved: 0,
-    descartados_local: 0,
-    aprovados_local: 0,
+    processed:         carryProcessed,
+    approved:          carryApproved,
+    descartados_local: currentStats.descartados_local || 0,
+    aprovados_local:   carryApproved,
+    mensagens_geradas: currentStats.mensagens_geradas || 0,
     hashtag_list: [],
     hashtag_idx: 0,
     bloqueio_count: 0,
