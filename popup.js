@@ -5,6 +5,7 @@ import {
   validateLicense, gateAction, normalizeKey, isKeyFormatValid,
   saveLicenseKey, clearLicense, getCurrentStatus,
 } from './sync.js';
+import { updateKanbanBadge } from './kanbanUI.js';
 
 // ─── Inicialização ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -17,8 +18,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initList();
   initBulkActions();
   initHistory();
+  initKanbanLauncher();
   initLicense();
   listenForProgress();
+  updateKanbanBadge();
 
   // Refresca estado da licença ao abrir o popup (silent = usa cache fresco)
   await refreshLicenseUI({ silent: true });
@@ -39,8 +42,26 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(s => {
     s.classList.toggle('active', s.id === `tab-${name}`);
   });
-  if (name === 'list')     refreshList();
+  if (name === 'list')     { refreshList(); updateKanbanBadge(); }
   if (name === 'history')  refreshHistory();
+}
+
+// ─── Kanban launcher (abre a UI completa em nova aba do navegador) ───────
+function initKanbanLauncher() {
+  document.getElementById('btn-open-kanban')?.addEventListener('click', openKanbanPage);
+}
+
+function openKanbanPage() {
+  const url = chrome.runtime.getURL('kanban.html');
+  // Reaproveita aba existente se já estiver aberta
+  chrome.tabs.query({ url }, (tabs) => {
+    if (tabs && tabs.length) {
+      chrome.tabs.update(tabs[0].id, { active: true });
+      chrome.windows?.update(tabs[0].windowId, { focused: true });
+    } else {
+      chrome.tabs.create({ url });
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -60,6 +81,8 @@ async function loadSettings() {
     // Filtros pré-qualificação
     'filtroSeguidoresMin', 'filtroSeguidoresMax', 'filtroKeywords',
     'filtroUltimoPostDias', 'filtroPostsMin', 'filtroPostsDias', 'filtroEngajamentoMin',
+    // Meta da sessão
+    'metaLeads',
   ].forEach(id => {
     const el = document.getElementById(id);
     if (el && cfg[id] !== undefined) el.value = cfg[id];
@@ -81,6 +104,9 @@ async function loadSettings() {
   // Migração silenciosa: se 'hashtags' antigo tem valor mas fonteHashtagLista está vazio, herda
   const hlNew = document.getElementById('fonteHashtagLista');
   if (hlNew && !hlNew.value && cfg.hashtags) hlNew.value = cfg.hashtags;
+
+  // Cacheia meta de leads — usado pela stats-row pra mostrar progresso
+  _metaCached = Number(cfg.metaLeads) || null;
 }
 
 function initForms() {
@@ -123,6 +149,8 @@ async function saveSearchSettings() {
   cfg.filtroPostsMin          = val('filtroPostsMin');
   cfg.filtroPostsDias         = val('filtroPostsDias');
   cfg.filtroEngajamentoMin    = val('filtroEngajamentoMin');
+  cfg.metaLeads               = val('metaLeads');
+  _metaCached                 = Number(cfg.metaLeads) || null;
   await saveSettings(cfg);
   showToast('search-toast', 'Configurações de busca salvas!', 'success');
 }
@@ -444,6 +472,7 @@ async function restoreState() {
       approved:    stats.approved,
       descartados: stats.descartados_local,
       mensagens:   stats.mensagens_geradas,
+      meta:        _metaCached,
     });
   }
 
@@ -483,6 +512,7 @@ function listenForProgress() {
     if (msg.type === 'IG_BLOCK_PAUSED')       handleBlockPaused(msg);
     if (msg.type === 'IG_BLOCK_DEFINITIVE')   handleBlockDefinitive(msg);
     if (msg.type === 'IG_BLOCK_RESUMED')      handleBlockResumed();
+    if (msg.type === 'GOAL_REACHED')          handleGoalReached(msg);
     if (msg.type === 'MESSAGES_GENERATING')   handleMessagesGenerating(msg.username);
     if (msg.type === 'MESSAGES_GENERATED')    handleMessagesGenerated(msg.username);
     if (msg.type === 'MESSAGES_FAILED')       handleMessagesFailed(msg.username, msg.error);
@@ -490,8 +520,9 @@ function listenForProgress() {
 }
 
 // ─── Handlers dos novos eventos ───────────────────────────────────────────
-function handleBlockPaused({ message, until }) {
-  showBlockBanner(message || 'Coleta pausada por 2h.', until);
+function handleBlockPaused({ message, until, pause_min }) {
+  const dur = pause_min ? `${pause_min}min` : 'pausa anti-detecção';
+  showBlockBanner(message || `Coleta pausada (${dur}).`, until);
   resetProspectingButtons();
 }
 
@@ -505,6 +536,18 @@ function handleBlockResumed() {
   showCollectionBanner();
   document.getElementById('btn-start').classList.add('hidden');
   document.getElementById('btn-stop').classList.remove('hidden');
+}
+
+function handleGoalReached({ meta, approved }) {
+  hideCollectionBanner();
+  hideBlockBanner();
+  hideBlockDefinitiveBanner();
+  resetProspectingButtons();
+  addLogEntry({
+    action:  'complete',
+    message: `🎯 Meta atingida: ${approved}/${meta} aprovados. Coleta encerrada.`,
+  });
+  refreshList();
 }
 
 function handleMessagesGenerating(username) {
@@ -537,6 +580,7 @@ function handleProgress(msg) {
       approved:    approved || 0,
       descartados: msg.descartados_local,
       mensagens:   msg.mensagens_geradas,
+      meta:        _metaCached,
     });
   }
 
@@ -613,7 +657,10 @@ function handleProgress(msg) {
     case 'ig_block_paused':
       addLogEntry({
         action: 'ig_block_paused',
-        message: `⛔ ${msg.message || reason}. Pausa de 2h.`,
+        reason:    msg.reason,
+        until:     msg.until,
+        pause_min: msg.pause_min,
+        message:   msg.message,
       });
       break;
 
@@ -627,7 +674,7 @@ function handleProgress(msg) {
     case 'ig_block_resumed':
       addLogEntry({
         action: 'ig_block_resumed',
-        message: '▶ Coleta retomada após pausa de 2h',
+        message: '▶ Coleta retomada após pausa de bloqueio',
       });
       break;
 
@@ -647,8 +694,10 @@ function handleProgress(msg) {
 
     case 'long_pause':
       addLogEntry({
-        action: 'evaluating',
-        message: `⏸ Pausa longa: ${msg.pausaSeg}s (anti-detecção)`,
+        action: 'long_pause',
+        pausaSeg: msg.pausaSeg,
+        until:    msg.until,
+        kind:     msg.kind,
       });
       break;
 
@@ -688,6 +737,13 @@ function handleProgress(msg) {
       addLogEntry({ action: 'collection_done', message: `Prospecção encerrada. ${msg.approved || 0} aprovados.` });
       resetProspectingButtons();
       hideCollectionBanner();
+      break;
+
+    case 'goal_reached':
+      addLogEntry({
+        action: 'complete',
+        message: `🎯 Meta atingida: ${msg.approved}/${msg.meta} aprovados. Coleta encerrada.`,
+      });
       break;
 
     case 'collection_error':
@@ -804,7 +860,7 @@ let historyFilter = 'all';
 
 function initHistory() {
   document.getElementById('btn-clear-history')?.addEventListener('click', async () => {
-    if (!confirm('Limpar todo o histórico de perfis analisados?')) return;
+    if (!confirm('Limpar todo o histórico de perfis analisados?\n\nNão afeta os perfis aprovados nem os que estão no Kanban.')) return;
     await clearHistory();
     refreshHistory();
   });
@@ -928,7 +984,13 @@ function openCardDetail(card, profile) {
   const scoreColor = scoreToColor(score);
   const initial    = (profile.nome || profile.username || '?')[0].toUpperCase();
 
-  document.getElementById('cd-avatar').textContent = initial;
+  const cdAvatar = document.getElementById('cd-avatar');
+  const cdPic = profile.profile_pic_data || profile.profile_pic_url;
+  if (cdPic) {
+    cdAvatar.innerHTML = `<img src="${escHtml(cdPic)}" alt="" referrerpolicy="no-referrer" onerror="this.parentNode.textContent='${escHtml(initial)}'">`;
+  } else {
+    cdAvatar.textContent = initial;
+  }
   document.getElementById('cd-name').textContent   = profile.nome || profile.username;
   document.getElementById('cd-meta').textContent   = `@${profile.username} · ${profile.seguidores || ''} seguidores`;
 
@@ -1013,19 +1075,38 @@ function initList() {
   initListToolbar();
 
   document.getElementById('btn-clear-all').addEventListener('click', async () => {
-    if (!confirm('Limpar todos os perfis aprovados e o log?')) return;
-    await sendToBg({ type: 'CLEAR_PROFILES' });
+    if (!confirm('Limpar a lista de aprovados, o histórico e o log?\n\n' +
+                 '• Perfis no Kanban: continuam lá, intactos (só somem desta lista).\n' +
+                 '• Perfis fora do Kanban: excluídos definitivamente.\n' +
+                 '• Todos seguem na blacklist (não voltam em novas buscas).')) return;
+    const res = await sendToBg({ type: 'CLEAR_PROFILES' });
     await refreshList();
     clearLogUI();
-    updateListBadge(0);
     updateStatsUI({ processed: 0, approved: 0, descartados: 0, mensagens: 0 });
     document.getElementById('stats-row').style.display = 'none';
+    await updateKanbanBadge();
+
+    const kept    = res?.kept_in_kanban || 0;
+    const removed = res?.removed || 0;
+    let msg;
+    if (kept > 0 && removed > 0) {
+      msg = `${removed} excluído(s) · ${kept} mantido(s) no Kanban`;
+    } else if (kept > 0) {
+      msg = `${kept} perfil(is) mantido(s) no Kanban`;
+    } else if (removed > 0) {
+      msg = `${removed} perfil(is) excluído(s)`;
+    } else {
+      msg = 'Nada para limpar';
+    }
+    showToast('settings-toast', msg, 'success');
   });
 }
 
 async function refreshList() {
   const res      = await sendToBg({ type: 'GET_PROFILES' });
-  const profiles = res?.profiles || [];
+  // Esconde perfis marcados como "limpos" pelo botão "Limpar tudo" (continuam
+  // no Kanban, só somem da aba Aprovados).
+  const profiles = (res?.profiles || []).filter(p => !p.hidden_from_list);
   renderProfiles(profiles);
 }
 
@@ -1129,7 +1210,7 @@ function buildProfileCard(profile, hasOpenAI = false) {
     <input type="checkbox" class="card-select" data-username="${escHtml(profile.username)}" ${isSelected ? 'checked' : ''} />
 
     <div class="card-header">
-      <div class="card-avatar">${initial}</div>
+      <div class="card-avatar">${(() => { const pic = profile.profile_pic_data || profile.profile_pic_url; return pic ? `<img src="${escHtml(pic)}" alt="" referrerpolicy="no-referrer" onerror="this.parentNode.textContent='${escHtml(initial)}'">` : initial; })()}</div>
       <div class="card-info">
         <div class="card-name">${escHtml(profile.nome || profile.username)}</div>
         <div class="card-username">@${escHtml(profile.username)} · ${escHtml(profile.seguidores || '')} seguidores</div>
@@ -1412,8 +1493,15 @@ function buildProfileCard(profile, hasOpenAI = false) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function addLogEntry(e = {}, scroll = true) {
-  const { action = 'info', username, pontuacao, score, error, pausaSeg, reason, detail } = e;
+  const { action = 'info', username, pontuacao, score, error, pausaSeg, reason, detail, until, ts } = e;
   let { message = '' } = e;
+
+  // Hora absoluta: usa ts da entrada (do storage) ou Date.now() pra eventos ao vivo
+  const eventTs = ts || Date.now();
+  const timeStr = formatHMSClock(eventTs);
+
+  const untilStr = until ? formatHMSClock(until) : null;
+  const pauseMin = e.pause_min || (pausaSeg ? Math.round(pausaSeg / 60) : null);
 
   // Reconstrói mensagem quando carregada do storage (não tem campo message)
   if (!message) {
@@ -1426,14 +1514,25 @@ function addLogEntry(e = {}, scroll = true) {
       case 'collection_done':  message = `Prospecção encerrada. ${e.approved || 0} aprovados.`; break;
       case 'complete':    message = `Meta atingida! Prospecção encerrada.`; break;
       case 'stopped':     message = 'Prospecção interrompida pelo usuário.'; break;
-      case 'long_pause':  message = pausaSeg ? `⏸ Pausa longa: ${pausaSeg}s (anti-detecção)` : '⏸ Pausa longa…'; break;
+      case 'long_pause':
+        if (untilStr) {
+          message = `⏸ Pausa anti-detecção${pausaSeg ? ` (~${pausaSeg}s)` : ''} — retoma às ${untilStr}`;
+        } else {
+          message = pausaSeg ? `⏸ Pausa: ${pausaSeg}s (anti-detecção)` : '⏸ Pausa…';
+        }
+        break;
       case 'hashtag_start':    message = `▶ Iniciando #${e.hashtag} (${e.idx}/${e.total})`; break;
       case 'hashtag_done':     message = `✓ #${e.hashtag} concluída${e.next ? `. Próxima: #${e.next}` : ''}`; break;
       case 'source_start':     message = sourceStartLabel(e); break;
       case 'source_done':      message = sourceDoneLabel(e); break;
-      case 'ig_block_paused':  message = `⛔ ${e.message || reason}. Pausa de 2h.`; break;
+      case 'ig_block_paused': {
+        const dur = pauseMin ? `${pauseMin}min` : '~';
+        const ret = untilStr ? ` — retoma às ${untilStr}` : '';
+        message = `⛔ ${e.message || reason || 'Bloqueio detectado'}. Pausa de ${dur}${ret}.`;
+        break;
+      }
       case 'ig_block_definitive': message = `🛑 Bloqueio definitivo (2x): ${e.message || reason}.`; break;
-      case 'ig_block_resumed': message = '▶ Coleta retomada após pausa de 2h'; break;
+      case 'ig_block_resumed': message = '▶ Coleta retomada após pausa de bloqueio'; break;
       case 'error':       message = `Erro em @${username || '?'}: ${error || ''}`; break;
       default:            message = action;
     }
@@ -1445,10 +1544,15 @@ function addLogEntry(e = {}, scroll = true) {
 
   const entry = document.createElement('div');
   entry.className = `log-entry ${action}`;
-  entry.innerHTML = `<span class="log-dot"></span><span>${escHtml(message)}</span>`;
+  entry.innerHTML = `<span class="log-dot"></span><span class="log-time">${timeStr}</span><span class="log-msg">${escHtml(message)}</span>`;
   logArea.appendChild(entry);
 
   if (scroll) scrollLogToBottom();
+}
+
+function formatHMSClock(ts) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
 }
 
 function scrollLogToBottom() {
@@ -1470,11 +1574,18 @@ function showLogHeader() {
 }
 
 function updateStatsUI(s) {
-  // Compat: aceita (processed, approved) ou ({ processed, approved, descartados, mensagens })
+  // Compat: aceita (processed, approved) ou ({ processed, approved, descartados, mensagens, meta })
   if (typeof s === 'number') s = { processed: s, approved: arguments[1] || 0 };
   const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.textContent = v; };
   set('stat-processed', s.processed);
-  set('stat-approved',  s.approved);
+  // Aprovados: se houver meta configurada, mostra "X / Y"
+  const meta = Number(s.meta);
+  const approvedEl = document.getElementById('stat-approved');
+  if (approvedEl && s.approved != null) {
+    approvedEl.textContent = Number.isFinite(meta) && meta > 0
+      ? `${s.approved} / ${meta}`
+      : `${s.approved}`;
+  }
   set('stat-discarded', s.descartados);
   set('stat-messages',  s.mensagens);
 }
@@ -1519,12 +1630,124 @@ function showToast(id, message, type = 'success') {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let _blockCountdownInterval = null;
+let _activityTicker         = null;
 
 function showCollectionBanner() {
   document.getElementById('collection-banner')?.classList.remove('hidden');
+  startActivityTicker();
 }
 function hideCollectionBanner() {
   document.getElementById('collection-banner')?.classList.add('hidden');
+  stopActivityTicker();
+  document.getElementById('activity-banner')?.classList.add('hidden');
+}
+
+// ─── Activity banner — mostra estado real da prospecção ───────────────────
+// Decide entre: collecting / group_pause / long_pause / warning / stalled
+// baseado em stats.pause_until e stats.last_activity_at.
+function startActivityTicker() {
+  stopActivityTicker();
+  const tick = async () => {
+    try {
+      const res = await sendToBg({ type: 'GET_STATS' });
+      const stats = res?.stats;
+      // Se uma sessão de bloqueio explícito está ativa, o block-banner cobre — esconde o activity
+      if (!stats || !stats.active || stats.bloqueio_paused_until || stats.bloqueio_definitivo) {
+        document.getElementById('activity-banner')?.classList.add('hidden');
+        return;
+      }
+      renderActivityBanner(stats);
+    } catch (_) {}
+  };
+  tick();
+  _activityTicker = setInterval(tick, 1500);
+}
+
+function stopActivityTicker() {
+  if (_activityTicker) {
+    clearInterval(_activityTicker);
+    _activityTicker = null;
+  }
+}
+
+function renderActivityBanner(stats) {
+  const banner = document.getElementById('activity-banner');
+  const title  = document.getElementById('activity-title');
+  const sub    = document.getElementById('activity-sub');
+  const timer  = document.getElementById('activity-timer');
+  if (!banner || !title || !sub || !timer) return;
+
+  const now             = Date.now();
+  const pauseUntil      = stats.pause_until || 0;
+  const lastActivityAt  = stats.last_activity_at || now;
+  const idleMs          = now - lastActivityAt;
+
+  banner.classList.remove('hidden');
+
+  // 1) Pausa explícita (vinda do content.js) ainda no futuro
+  if (pauseUntil && pauseUntil > now) {
+    const remainingMs = pauseUntil - now;
+    const kind = stats.pause_kind || 'group';
+    banner.dataset.state = kind === 'long' ? 'long_pause' : 'group_pause';
+    title.textContent = kind === 'long'
+      ? '⏸ Pausa longa anti-detecção'
+      : '⏸ Pausa entre grupos de perfis';
+    sub.textContent   = kind === 'long'
+      ? 'Pausa adicional pra parecer comportamento humano (2-5min).'
+      : 'Intervalo aleatório entre grupos (anti-bot).';
+    timer.textContent = formatMMSS(remainingMs);
+    return;
+  }
+
+  // 2) Sem pausa registrada — usa heartbeat de atividade
+  if (idleMs < 60_000) {
+    // < 1 min: provavelmente coletando agora
+    banner.dataset.state = 'collecting';
+    title.textContent = '🟢 Coletando perfis';
+    sub.textContent   = 'Última atividade ' + formatAgo(idleMs);
+    timer.textContent = '';
+  } else if (idleMs < 6 * 60_000) {
+    // 1-6min: pode estar em delay entre perfis (3-7s default) — improvável demorar tanto
+    // mas pode estar em pausa de grupo que perdemos o evento. Avisa em amarelo.
+    banner.dataset.state = 'warning';
+    title.textContent = '⏳ Aguardando próximo perfil';
+    sub.textContent   = 'Pode estar em pausa entre grupos. Sem resposta há ' + formatAgo(idleMs) + '.';
+    timer.textContent = '';
+  } else if (idleMs < 30 * 60_000) {
+    // 6-30min: provavelmente pausa longa não-rastreada
+    banner.dataset.state = 'long_pause';
+    title.textContent = '⏸ Provável pausa anti-detecção';
+    sub.textContent   = 'Sem novos perfis há ' + formatAgo(idleMs) + '. Comum em pausas longas (até 5min) entre lotes de perfis.';
+    timer.textContent = '';
+  } else {
+    // > 30min: travada. Provavelmente service worker reiniciou ou aba do IG quebrou.
+    banner.dataset.state = 'stalled';
+    title.textContent = '⚠ Sem resposta há ' + formatAgo(idleMs);
+    sub.textContent   = 'Possível trava. Clique em "Parar" e inicie a prospecção novamente.';
+    timer.textContent = '';
+  }
+}
+
+function formatAgo(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60)    return `${s}s atrás`;
+  const m = Math.floor(s / 60);
+  if (m < 60)    return `${m} min atrás`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${h}h${mm ? ' ' + mm + 'min' : ''} atrás`;
+}
+
+function formatMMSS(ms) {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${h}:${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
 function showBlockBanner(message, untilTs) {
@@ -1533,7 +1756,7 @@ function showBlockBanner(message, untilTs) {
   const banner = document.getElementById('block-banner');
   const msg    = document.getElementById('block-banner-msg');
   if (banner) banner.classList.remove('hidden');
-  if (msg)    msg.textContent = message || 'Coleta pausada por 2h.';
+  if (msg)    msg.textContent = message || 'Coleta pausada — aguarde o contador.';
   startBlockCountdown(untilTs);
 }
 
@@ -1620,6 +1843,7 @@ async function generateMessagesForUsers(usernames) {
 
 const _selectedUsernames = new Set();
 let _hasOpenAICached = false;
+let _metaCached      = null;
 
 function updateBulkUI() {
   const count = _selectedUsernames.size;
@@ -1627,6 +1851,11 @@ function updateBulkUI() {
   const btn = document.getElementById('btn-bulk-generate');
   if (countEl) countEl.textContent = count;
   if (btn) btn.disabled = count === 0 || !_hasOpenAICached;
+
+  const countKanban = document.getElementById('bulk-count-kanban');
+  const btnKanban   = document.getElementById('btn-bulk-kanban');
+  if (countKanban) countKanban.textContent = count;
+  if (btnKanban)   btnKanban.disabled = count === 0;
 }
 
 function initBulkActions() {
@@ -1642,6 +1871,19 @@ function initBulkActions() {
   document.getElementById('btn-bulk-generate')?.addEventListener('click', () => {
     if (_selectedUsernames.size === 0) return;
     generateMessagesForUsers([..._selectedUsernames]);
+  });
+  document.getElementById('btn-bulk-kanban')?.addEventListener('click', async () => {
+    if (_selectedUsernames.size === 0) return;
+    const usernames = [..._selectedUsernames];
+    const res = await sendToBg({ type: 'KANBAN_ADD_PROFILES', usernames });
+    if (res?.ok !== false) {
+      _selectedUsernames.clear();
+      showToast('settings-toast', `${usernames.length} perfil(is) enviado(s) pro Kanban`, 'success');
+      await refreshList();
+      await updateKanbanBadge();
+    } else {
+      showError(res?.error || 'Erro ao mover pro Kanban');
+    }
   });
   document.getElementById('btn-resume-after-block')?.addEventListener('click', async () => {
     const res = await sendToBg({ type: 'RESUME_PROSPECTING' });
@@ -1926,3 +2168,4 @@ function fmtDiasAtras(ts) {
   if (dias === 1) return 'ontem';
   return `há ${dias} dias`;
 }
+

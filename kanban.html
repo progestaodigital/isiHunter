@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IsiHunter — Kanban CRM</title>
+  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="kanban.css" />
+  <link rel="icon" href="icons/icon48.png" />
+</head>
+<body class="kanban-page-body">
+
+<div class="kanban-page">
+
+  <header class="kanban-page-header">
+    <div class="kanban-page-logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"
+              fill="url(#g1)"/>
+        <defs>
+          <linearGradient id="g1" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#a855f7"/>
+            <stop offset="100%" stop-color="#ec4899"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <span>IsiHunter <strong>Kanban</strong></span>
+    </div>
+
+    <div class="kanban-page-actions">
+      <span class="kanban-toolbar-title" id="kanban-counter">Kanban</span>
+      <button class="btn btn-secondary btn-sm" id="btn-kanban-refresh" title="Recarregar">↻ Atualizar</button>
+      <button class="btn btn-primary btn-sm" id="btn-kanban-add-col">+ Nova coluna</button>
+    </div>
+  </header>
+
+  <div class="kanban-empty hidden" id="kanban-empty">
+    Nenhum lead no Kanban ainda. Abra a extensão, vá em <strong>Aprovados</strong>, selecione perfis e clique em <strong>→ Kanban</strong>. Eles entrarão na coluna <strong>Aprovados</strong>.
+  </div>
+
+  <main class="kanban-board" id="kanban-board"></main>
+
+  <!-- Painel lateral de detalhes do card -->
+  <aside class="kanban-card-detail hidden" id="kanban-card-detail">
+    <div class="kanban-detail-header">
+      <button class="card-detail-back" id="kanban-detail-back" title="Voltar">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+        </svg>
+      </button>
+      <img class="kanban-detail-avatar" id="kanban-detail-avatar" alt="" referrerpolicy="no-referrer" />
+      <div class="kanban-detail-title">
+        <div class="kanban-detail-name" id="kanban-detail-name"></div>
+        <div class="kanban-detail-meta" id="kanban-detail-meta"></div>
+      </div>
+      <button class="btn-link danger" id="kanban-detail-remove" title="Remover do Kanban">✕ remover</button>
+    </div>
+
+    <!-- Perfil: stats + bio + motivo de aprovação -->
+    <div class="kanban-detail-section" id="kanban-profile-section">
+      <div class="kanban-profile-stats" id="kanban-profile-stats"></div>
+      <div class="kanban-profile-bio hidden" id="kanban-profile-bio"></div>
+      <div class="kanban-profile-approval hidden" id="kanban-profile-approval">
+        <div class="kanban-detail-section-title">Motivo da aprovação</div>
+        <div class="kanban-approval-breakdown" id="kanban-approval-breakdown"></div>
+      </div>
+    </div>
+
+    <!-- Linha de atalhos: abrir Instagram, etc -->
+    <div class="kanban-detail-actions">
+      <a id="kanban-detail-instagram" class="btn btn-secondary btn-sm" target="_blank" rel="noopener" href="#">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="margin-right:4px">
+          <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2zm-.2 2A3.6 3.6 0 0 0 4 7.6v8.8C4 18.39 5.61 20 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6C20 5.61 18.39 4 16.4 4H7.6zm9.65 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+        </svg>
+        Abrir perfil
+      </a>
+    </div>
+
+    <!-- Datas do contato -->
+    <div class="kanban-detail-section kanban-dates-section">
+      <div class="kanban-dates">
+        <div class="kanban-date-item">
+          <span class="kanban-date-label">Adicionado em</span>
+          <span class="kanban-date-value" id="kanban-detail-added"></span>
+        </div>
+        <div class="kanban-date-item">
+          <span class="kanban-date-label">Última ação</span>
+          <span class="kanban-date-value" id="kanban-detail-last-action"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="kanban-detail-section">
+      <div class="kanban-detail-section-title">Coluna atual</div>
+      <select class="kanban-column-select" id="kanban-detail-column"></select>
+    </div>
+
+    <!-- Mensagens geradas + gerar novas -->
+    <div class="kanban-detail-section" id="kanban-messages-section">
+      <div class="kanban-detail-section-title">
+        Mensagens
+        <button class="btn btn-secondary btn-sm" id="btn-kanban-generate-msgs" title="Usa a chave OpenAI para gerar quebra-gelo, gancho e comentário">
+          ✨ Gerar agora
+        </button>
+      </div>
+      <div class="kanban-messages-list" id="kanban-messages-list"></div>
+    </div>
+
+    <div class="kanban-detail-section">
+      <div class="kanban-detail-section-title">Ações e comentários</div>
+      <textarea id="kanban-note-input" rows="3" placeholder="Ex: liguei terça-feira, retornar quinta. Pediu material por e-mail."></textarea>
+      <div class="actions-row" style="margin-top:6px">
+        <button class="btn btn-primary btn-sm" id="btn-kanban-add-note">+ Registrar</button>
+      </div>
+      <div class="kanban-notes-list" id="kanban-notes-list"></div>
+    </div>
+  </aside>
+
+</div>
+
+<script type="module" src="kanban.js?v=3"></script>
+</body>
+</html>

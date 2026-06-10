@@ -130,7 +130,7 @@
       // Pausa entre grupos (com irregularidade extra)
       if (perfilCount > 0 && perfilCount % pacing.tamanhoEfetivo === 0) {
         const pausaMs = randomInt(delays.pausaMinGrupo * 1000, delays.pausaMaxGrupo * 1000);
-        notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000) });
+        notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000), until: Date.now() + pausaMs, kind: 'group' });
         await sleep(pausaMs);
         if (stopRequested) break;
 
@@ -138,7 +138,7 @@
         // Pausa LONGA a cada 3-5 grupos (camada extra de irregularidade)
         if (pacing.grupoCount >= pacing.proximaPausaLonga) {
           const longaMs = randomInt(2 * 60 * 1000, 5 * 60 * 1000);
-          notify('long_pause', { pausaSeg: Math.round(longaMs / 1000) });
+          notify('long_pause', { pausaSeg: Math.round(longaMs / 1000), until: Date.now() + longaMs, kind: 'long' });
           await sleep(longaMs);
           if (stopRequested) break;
           pacing.proximaPausaLonga = pacing.grupoCount + randomInt(3, 5);
@@ -244,14 +244,14 @@
         // Pausa entre grupos (com irregularidade)
         if (perfilCount % pacing.tamanhoEfetivo === 0) {
           const pausaMs = randomInt(delays.pausaMinGrupo * 1000, delays.pausaMaxGrupo * 1000);
-          notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000) });
+          notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000), until: Date.now() + pausaMs, kind: 'group' });
           await sleep(pausaMs);
           if (stopRequested) break;
 
           pacing.grupoCount++;
           if (pacing.grupoCount >= pacing.proximaPausaLonga) {
             const longaMs = randomInt(2 * 60 * 1000, 5 * 60 * 1000);
-            notify('long_pause', { pausaSeg: Math.round(longaMs / 1000) });
+            notify('long_pause', { pausaSeg: Math.round(longaMs / 1000), until: Date.now() + longaMs, kind: 'long' });
             await sleep(longaMs);
             if (stopRequested) break;
             pacing.proximaPausaLonga = pacing.grupoCount + randomInt(3, 5);
@@ -391,14 +391,14 @@
       // Pausa entre grupos (com irregularidade)
       if (perfilCount % pacing.tamanhoEfetivo === 0) {
         const pausaMs = randomInt(delays.pausaMinGrupo * 1000, delays.pausaMaxGrupo * 1000);
-        notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000) });
+        notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000), until: Date.now() + pausaMs, kind: 'group' });
         await sleep(pausaMs);
         if (stopRequested) break;
 
         pacing.grupoCount++;
         if (pacing.grupoCount >= pacing.proximaPausaLonga) {
           const longaMs = randomInt(2 * 60 * 1000, 5 * 60 * 1000);
-          notify('long_pause', { pausaSeg: Math.round(longaMs / 1000) });
+          notify('long_pause', { pausaSeg: Math.round(longaMs / 1000), until: Date.now() + longaMs, kind: 'long' });
           await sleep(longaMs);
           if (stopRequested) break;
           pacing.proximaPausaLonga = pacing.grupoCount + randomInt(3, 5);
@@ -560,14 +560,14 @@
       // Pausa entre grupos (com irregularidade)
       if (perfilCount % pacing.tamanhoEfetivo === 0) {
         const pausaMs = randomInt(delays.pausaMinGrupo * 1000, delays.pausaMaxGrupo * 1000);
-        notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000) });
+        notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000), until: Date.now() + pausaMs, kind: 'group' });
         await sleep(pausaMs);
         if (stopRequested) break;
 
         pacing.grupoCount++;
         if (pacing.grupoCount >= pacing.proximaPausaLonga) {
           const longaMs = randomInt(2 * 60 * 1000, 5 * 60 * 1000);
-          notify('long_pause', { pausaSeg: Math.round(longaMs / 1000) });
+          notify('long_pause', { pausaSeg: Math.round(longaMs / 1000), until: Date.now() + longaMs, kind: 'long' });
           await sleep(longaMs);
           if (stopRequested) break;
           pacing.proximaPausaLonga = pacing.grupoCount + randomInt(3, 5);
@@ -742,14 +742,14 @@
         // Pausa entre grupos (com irregularidade extra)
         if (perfilCount % pacing.tamanhoEfetivo === 0) {
           const pausaMs = randomInt(delays.pausaMinGrupo * 1000, delays.pausaMaxGrupo * 1000);
-          notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000) });
+          notify('long_pause', { pausaSeg: Math.round(pausaMs / 1000), until: Date.now() + pausaMs, kind: 'group' });
           await sleep(pausaMs);
           if (stopRequested) break;
 
           pacing.grupoCount++;
           if (pacing.grupoCount >= pacing.proximaPausaLonga) {
             const longaMs = randomInt(2 * 60 * 1000, 5 * 60 * 1000);
-            notify('long_pause', { pausaSeg: Math.round(longaMs / 1000) });
+            notify('long_pause', { pausaSeg: Math.round(longaMs / 1000), until: Date.now() + longaMs, kind: 'long' });
             await sleep(longaMs);
             if (stopRequested) break;
             pacing.proximaPausaLonga = pacing.grupoCount + randomInt(3, 5);
@@ -786,13 +786,22 @@
     // Cada item do bio_links: { url, title?, link_type?, ... }
     const bioLinks = Array.isArray(user.bio_links) ? user.bio_links : [];
 
+    const followingCount = Number(user.following_count || user.edge_follow?.count || 0);
+    const postsCount     = Number(user.media_count     || user.edge_owner_to_timeline_media?.count || 0);
+
     return {
       username,
       nome:                user.full_name || username,
       url_perfil:          `https://www.instagram.com/${username}/`,
       bio:                 user.biography || '',
+      profile_pic_url:     user.profile_pic_url_hd || user.profile_pic_url || '',
       seguidores:          formatFollowers(followerCount),
       seguidores_raw:      followerCount,
+      seguindo_raw:        followingCount,
+      posts_total:         postsCount,
+      is_verified:         !!user.is_verified,
+      is_business:         !!user.is_business || !!user.is_business_account,
+      category:            user.category || user.business_category_name || '',
       ultimo_post_legenda: posts[0]?.caption || '',
       url_post_recente:    posts[0]?.url     || '',
       data_ultimo_post:    metrics.data_ultimo_post,

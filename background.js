@@ -20,6 +20,18 @@ import {
   getGraylist,
   clearExpiredGraylist,
   incrementStat,
+  getCachedBioLink,
+  setCachedBioLink,
+  getKanbanColumns,
+  addKanbanColumn,
+  renameKanbanColumn,
+  removeKanbanColumn,
+  reorderKanbanColumns,
+  moveProfileToColumn,
+  addProfilesToKanban,
+  removeFromKanban,
+  addKanbanNote,
+  deleteKanbanNote,
 } from './db.js';
 import { generateIcebreaker, generateHook, generateComment } from './openai.js';
 import { sendLead } from './webhook.js';
@@ -27,7 +39,7 @@ import { validateLicense, gateAction, pulse, ensureAlarm, ALARM as LICENSE_ALARM
 import { passesFilters } from './filters.js';
 import { calculateScore } from './score.js';
 import { classifyFailure, shouldTriggerBlock, blockMessage } from './igBlockDetector.js';
-import { extractFromProfile } from './contactExtractor.js';
+import { extractFromProfile, extractFromUrlsAndText, mergeContacts } from './contactExtractor.js';
 
 // ─── Estado em memória ────────────────────────────────────────────────────
 let igTabId = null;
@@ -134,8 +146,21 @@ async function route(msg, _sender) {
     case 'COLLECTION_ERROR':        return onCollectionError(msg.error);
     case 'CHECK_ACTIVE':            return checkActiveState();
     case 'CHECK_LICENSE':           return { status: (await validateLicense({ silent: true }))?.status };
-    case 'PROGRESS':                return {};
+    case 'PROGRESS':                return handleProgress(msg);
     case 'PING':                    return { pong: true };
+
+    // ─── Kanban / CRM ───────────────────────────────────────────────────
+    case 'KANBAN_GET_COLUMNS':      return { columns: await getKanbanColumns() };
+    case 'KANBAN_ADD_COLUMN':       return { id: await addKanbanColumn(msg.name) };
+    case 'KANBAN_RENAME_COLUMN':    { await renameKanbanColumn(msg.id, msg.name); return {}; }
+    case 'KANBAN_REMOVE_COLUMN':    { await removeKanbanColumn(msg.id); return {}; }
+    case 'KANBAN_REORDER_COLUMNS':  { await reorderKanbanColumns(msg.orderedIds); return {}; }
+    case 'KANBAN_ADD_PROFILES':     { await addProfilesToKanban(msg.usernames, msg.columnId); return {}; }
+    case 'KANBAN_MOVE_PROFILE':     { await moveProfileToColumn(msg.username, msg.columnId); return {}; }
+    case 'KANBAN_REMOVE_PROFILE':   { await removeFromKanban(msg.username); return {}; }
+    case 'KANBAN_ADD_NOTE':         { const note = await addKanbanNote(msg.username, msg.text); return { note }; }
+    case 'KANBAN_DELETE_NOTE':      { await deleteKanbanNote(msg.username, msg.noteId); return {}; }
+
     default:                        throw new Error(`Mensagem desconhecida: ${msg.type}`);
   }
 }
@@ -190,6 +215,9 @@ async function startProspecting() {
     bloqueio_paused_until: null,
     bloqueio_definitivo: false,
     bloqueio_last_reason: null,
+    last_activity_at: Date.now(),
+    pause_until: null,
+    pause_kind:  null,
   });
   await clearExpiredGraylist();
   _failureBuffer.length = 0;
@@ -432,6 +460,10 @@ async function processProfile(profileData) {
   const stats = await getStats();
 
   stats.processed = (stats.processed || 0) + 1;
+  stats.last_activity_at = Date.now();
+  // Atividade chegou — qualquer pausa registrada está obsoleta
+  stats.pause_until = null;
+  stats.pause_kind  = null;
   await saveStats(stats);
 
   broadcast({ type: 'PROGRESS', action: 'evaluating', username: profileData.username, ...stats });
@@ -471,15 +503,37 @@ async function processProfileLocal(profileData, cfg, stats) {
 
   const { score, breakdown } = calculateScore(profileData, filters);
 
-  // Extração de contatos (gated por toggle, default OFF)
-  const contatos = cfg.extrairContatos ? extractFromProfile(profileData) : null;
+  // Extração de contatos shallow (gated por toggle, default OFF)
+  let contatos = cfg.extrairContatos ? extractFromProfile(profileData) : null;
 
+  // Fase 5b — extração profunda (gated por toggle separado, default OFF)
+  if (cfg.extrairContatos && cfg.extrairContatosProfundo) {
+    enrichWithDeepContacts(profileData, contatos).catch(err => {
+      console.warn('[IsiHunter BG] deep extract failed for', profileData.username, err?.message);
+    });
+  }
+
+  const now = Date.now();
   await saveProfile({
     ...profileData,
-    score_local:     score,
-    score_breakdown: breakdown,
+    score_local:        score,
+    score_breakdown:    breakdown,
+    // Auto-add ao Kanban (coluna padrão "Aprovados")
+    kanban_column_id:   'aprovados',
+    kanban_added_at:    now,
+    kanban_moved_at:    now,
+    kanban_last_action_at: now,
+    // Limpa flag de "escondido da lista" — perfil reaprovado volta a aparecer
+    hidden_from_list:   false,
+    hidden_at:          null,
     ...(contatos ? { contatos } : {}),
   });
+
+  // Baixa e cacheia a foto como data URL (sem bloquear a pipeline).
+  // Resolve o problema de URLs do CDN do IG que expiram + bloqueio de hotlinking.
+  if (profileData.profile_pic_url) {
+    cacheProfilePic(profileData.username, profileData.profile_pic_url).catch(() => {});
+  }
 
   await addToBlacklist(profileData.username);
   await addToHistory({
@@ -520,7 +574,25 @@ async function processProfileLocal(profileData, cfg, stats) {
   await appendLog(entry);
   broadcast({ type: 'PROGRESS', ...entry });
 
+  // Meta de leads atingida? Para a coleta automaticamente.
+  const meta = Number(cfg.metaLeads);
+  if (Number.isFinite(meta) && meta > 0 && newApproved >= meta) {
+    await stopOnGoalReached(meta, newApproved);
+  }
+
   return { approved: true, score };
+}
+
+async function stopOnGoalReached(meta, approved) {
+  await saveStats({ active: false });
+  chrome.alarms.clear('blockResume').catch(() => {});
+  if (igTabId) {
+    try { await sendToContent(igTabId, { type: 'STOP_COLLECTION' }); } catch (_) {}
+  }
+  const entry = { action: 'goal_reached', meta, approved };
+  await appendLog(entry);
+  broadcast({ type: 'PROGRESS', ...entry });
+  broadcast({ type: 'GOAL_REACHED', meta, approved });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -580,6 +652,9 @@ async function generateMessagesFor(usernames) {
 //  DETECÇÃO DE BLOQUEIO DO INSTAGRAM (state machine 2h → retoma → definitivo)
 // ═══════════════════════════════════════════════════════════════════════════
 async function reportIgFetchFailure({ status, body }) {
+  // Atividade existente — IG respondeu (mesmo que com erro). Não está travada.
+  await saveStats({ last_activity_at: Date.now() });
+
   const classified = classifyFailure({ status, body });
   if (!classified) return { blocked: false };
 
@@ -589,6 +664,23 @@ async function reportIgFetchFailure({ status, body }) {
   const { blocked, reason } = shouldTriggerBlock(_failureBuffer);
   if (blocked) await triggerBlockPause(reason);
   return { blocked, reason };
+}
+
+// ─── PROGRESS handler — extrai pacing events do content.js ────────────────
+// content.js emite 'long_pause' { pausaSeg, until?, kind? } antes de dormir.
+// Persistimos `pause_until` em stats pra que o popup mostre countdown.
+async function handleProgress(msg) {
+  if (msg.action === 'long_pause') {
+    const until = msg.until || (msg.pausaSeg ? Date.now() + msg.pausaSeg * 1000 : null);
+    if (until) {
+      await saveStats({
+        pause_until:      until,
+        pause_kind:       msg.kind || (msg.pausaSeg >= 120 ? 'long' : 'group'),
+        last_activity_at: Date.now(),
+      });
+    }
+  }
+  return {};
 }
 
 async function triggerBlockPause(reason) {
@@ -615,18 +707,21 @@ async function triggerBlockPause(reason) {
     broadcast({ type: 'PROGRESS', action: 'ig_block_definitive', reason, message: msg });
     broadcast({ type: 'IG_BLOCK_DEFINITIVE', reason, message: msg });
   } else {
-    const pauseMs = 2 * 60 * 60 * 1000; // 2h
-    const until = Date.now() + pauseMs;
+    // Pausa aleatória entre 60 e 150 minutos (1h–2h30min) — evita padrão fixo
+    const pauseMin = 60 + Math.floor(Math.random() * 91); // 60..150
+    const pauseMs  = pauseMin * 60 * 1000;
+    const until    = Date.now() + pauseMs;
     await saveStats({
       active: false,
       bloqueio_count: newCount,
       bloqueio_paused_until: until,
       bloqueio_last_reason: reason,
+      bloqueio_pause_min: pauseMin,
     });
     chrome.alarms.create('blockResume', { when: until });
-    appendLog({ action: 'ig_block_paused', reason, until, message: msg });
-    broadcast({ type: 'PROGRESS', action: 'ig_block_paused', reason, until, message: msg });
-    broadcast({ type: 'IG_BLOCK_PAUSED', reason, until, message: msg });
+    appendLog({ action: 'ig_block_paused', reason, until, pause_min: pauseMin, message: msg });
+    broadcast({ type: 'PROGRESS', action: 'ig_block_paused', reason, until, pause_min: pauseMin, message: msg });
+    broadcast({ type: 'IG_BLOCK_PAUSED', reason, until, pause_min: pauseMin, message: msg });
   }
 }
 
@@ -655,7 +750,7 @@ async function updateStatus(username, status) {
 }
 
 async function clearAll() {
-  await clearProfiles();
+  const cleared = await clearProfiles();
   await clearLog();
   await clearHistory();
   await saveStats({
@@ -664,7 +759,7 @@ async function clearAll() {
     hashtag_list: [], hashtag_idx: 0,
     bloqueio_count: 0, bloqueio_paused_until: null, bloqueio_definitivo: false,
   });
-  return {};
+  return { removed: cleared.removed, kept_in_kanban: cleared.kept };
 }
 
 async function initiateDM(username, message) {
@@ -843,6 +938,52 @@ async function onCollectionError(error) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Stub temporário — implementação completa da Fase 5b (fetch + offscreen + cache).
+// Atualmente o toggle `extrairContatosProfundo` não tem UI, então essa função
+// não é invocada na prática. Quando o toggle for adicionado, completar a impl.
+async function enrichWithDeepContacts(_profileData, _shallowContatos) {
+  return; // no-op
+}
+
+// ─── Download e cache da foto de perfil ───────────────────────────────────
+// IG CDN bloqueia hotlinking via referrer e usa signed URLs que expiram.
+// Baixamos a imagem no SW (sem referrer) e armazenamos como data URL.
+// Roda em paralelo (não bloqueia processamento de novos perfis).
+async function cacheProfilePic(username, picUrl) {
+  if (!picUrl || !username) return;
+  try {
+    const resp = await fetch(picUrl, {
+      method: 'GET',
+      referrer: '',
+      referrerPolicy: 'no-referrer',
+      credentials: 'omit',
+      cache: 'force-cache',
+    });
+    if (!resp.ok) {
+      console.warn('[IsiHunter] profile pic fetch failed for', username, resp.status);
+      return;
+    }
+    const blob = await resp.blob();
+
+    // Limite defensivo: 500KB. Acima disso pula (provavelmente não é avatar).
+    if (blob.size > 500 * 1024) {
+      console.warn('[IsiHunter] profile pic too large for', username, blob.size);
+      return;
+    }
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload  = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+
+    await saveProfile({ username, profile_pic_data: dataUrl });
+  } catch (err) {
+    console.warn('[IsiHunter] cacheProfilePic failed for', username, err?.message);
+  }
+}
 
 function buildFiltersFromSettings(cfg) {
   return {

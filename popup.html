@@ -101,10 +101,22 @@
       <span><strong>Coleta em andamento</strong> — não feche a aba do Instagram.</span>
     </div>
 
-    <!-- Banner: bloqueio anti-bot (pausa 2h) -->
+    <!-- Banner: estado atual (coletando / pausa / parada) -->
+    <div class="activity-banner hidden" id="activity-banner" data-state="collecting">
+      <div class="activity-banner-row">
+        <span class="activity-dot" id="activity-dot"></span>
+        <div class="activity-banner-text">
+          <div class="activity-banner-title" id="activity-title">Coletando…</div>
+          <div class="activity-banner-sub" id="activity-sub">última atividade agora</div>
+        </div>
+        <div class="activity-banner-timer" id="activity-timer"></div>
+      </div>
+    </div>
+
+    <!-- Banner: bloqueio anti-bot (pausa aleatória 1h-2h30min) -->
     <div class="block-banner hidden" id="block-banner">
       <div class="block-banner-title">⛔ <strong>Bloqueio anti-bot do Instagram</strong></div>
-      <div class="block-banner-msg" id="block-banner-msg">Aguardando 2h antes de retomar.</div>
+      <div class="block-banner-msg" id="block-banner-msg">Aguardando antes de retomar.</div>
       <div class="block-banner-countdown" id="block-banner-countdown">--:--:--</div>
     </div>
 
@@ -256,6 +268,15 @@
         <input id="filtroEngajamentoMin" type="number" min="0" step="0.1" placeholder="ex: 2.5" />
       </div>
 
+      <div class="settings-section-title">Meta da Sessão</div>
+      <div class="hint" style="margin-bottom:10px">
+        Opcional. Quando atingir este número de perfis <strong>aprovados</strong>, a coleta para automaticamente.
+      </div>
+      <div class="field">
+        <label for="metaLeads">Meta de leads aprovados</label>
+        <input id="metaLeads" type="number" min="1" placeholder="ex: 50 — em branco = sem limite" />
+      </div>
+
       <div class="actions-row">
         <button type="submit" class="btn btn-primary" id="btn-save-search">
           Salvar Busca
@@ -276,6 +297,16 @@
       <button class="btn-link danger" id="btn-clear-all">Limpar tudo</button>
     </div>
 
+    <!-- Acesso ao Kanban CRM em nova aba do navegador -->
+    <button class="btn btn-secondary kanban-open-row" id="btn-open-kanban" title="Abre o Kanban em uma aba inteira do navegador">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="margin-right:4px">
+        <path d="M3 5h6v14H3zm8 0h6v9h-6zm8 0h2v14h-2z"/>
+      </svg>
+      Abrir Kanban CRM
+      <span class="kanban-open-row-badge" id="kanban-badge" style="display:none">0</span>
+      <span class="kanban-open-row-hint">↗ nova aba</span>
+    </button>
+
     <!-- Toolbar: ordenação + filtro rápido -->
     <div class="list-toolbar hidden" id="list-toolbar">
       <div class="list-toolbar-group">
@@ -294,14 +325,17 @@
       </div>
     </div>
 
-    <!-- Ações em lote: gerar mensagens dos selecionados -->
+    <!-- Ações em lote: gerar mensagens / mandar pro Kanban -->
     <div class="bulk-actions hidden" id="bulk-actions">
       <label class="bulk-select-all">
         <input type="checkbox" id="bulk-select-all" />
         <span>Selecionar todos</span>
       </label>
+      <button class="btn btn-secondary btn-sm" id="btn-bulk-kanban" disabled title="Mover selecionados pra coluna Aprovados do Kanban">
+        → Kanban (<span id="bulk-count-kanban">0</span>)
+      </button>
       <button class="btn btn-primary btn-sm" id="btn-bulk-generate" disabled title="Selecione perfis e configure a chave OpenAI">
-        Gerar mensagens (<span id="bulk-count">0</span>)
+        Gerar msgs (<span id="bulk-count">0</span>)
       </button>
     </div>
 
@@ -311,6 +345,7 @@
       </div>
     </div>
   </section>
+
 
   <!-- ════════════════════════════════════════════════════════════════
        ABA: HISTÓRICO
@@ -663,6 +698,6 @@
 
 </div><!-- /.app -->
 
-<script type="module" src="popup.js?v=25"></script>
+<script type="module" src="popup.js?v=31"></script>
 </body>
 </html>

@@ -7,6 +7,11 @@
 //   - WhatsApp direto em bio_links (wa.me, api.whatsapp.com, web.whatsapp.com)
 //   - Grupo de WhatsApp em bio_links (chat.whatsapp.com/...)
 //   - mailto: em bio_links
+//
+// Fase 5b adiciona helpers para extrair contatos de páginas externas:
+//   - mergeContacts() — combina dois resultados de extractFromProfile() shape
+//   - extractFromUrlsAndText() — recebe lista de hrefs (de page link-in-bio)
+//     + texto visível e devolve contatos no mesmo shape de extractFromProfile
 
 // ─── Regex helpers ────────────────────────────────────────────────────────
 
@@ -146,5 +151,63 @@ export function extractFromProfile(profile) {
     whatsapps:        [...whatsapps],
     grupos_whatsapp:  [...grupos],
     has_contact:      emails.size > 0 || phones.size > 0 || whatsapps.size > 0 || grupos.size > 0,
+  };
+}
+
+// ─── Fase 5b: extração de URLs + texto coletados de uma página externa ────
+
+// Recebe hrefs (já resolvidos pra absolutos) + texto visível da página.
+// Devolve o mesmo shape de extractFromProfile.
+export function extractFromUrlsAndText(hrefs, text) {
+  const emails    = new Set();
+  const phones    = new Set();
+  const whatsapps = new Set();
+  const grupos    = new Set();
+
+  for (const url of (hrefs || [])) {
+    const wa = extractWhatsAppFromUrl(url);
+    if (wa) {
+      if (wa.type === 'phone') whatsapps.add(wa.value);
+      else                     grupos.add(wa.value);
+      continue;
+    }
+    const mailto = extractMailtoFromUrl(url);
+    if (mailto) emails.add(mailto);
+  }
+
+  if (text) {
+    extractEmails(text).forEach(e => emails.add(e));
+    extractPhones(text).forEach(p => phones.add(p));
+  }
+
+  // Celular BR detectado no texto → também é WhatsApp candidato
+  for (const phone of phones) {
+    if (phone.length === 14 && /^\+55\d{2}9\d{8}$/.test(phone)) {
+      whatsapps.add(phone);
+    }
+  }
+
+  return {
+    emails:           [...emails],
+    phones:           [...phones],
+    whatsapps:        [...whatsapps],
+    grupos_whatsapp:  [...grupos],
+    has_contact:      emails.size > 0 || phones.size > 0 || whatsapps.size > 0 || grupos.size > 0,
+  };
+}
+
+// Combina dois resultados (shape de extractFromProfile) em um só,
+// deduplicando. Útil pra mesclar contatos da bio com contatos da página externa.
+export function mergeContacts(a, b) {
+  const A = a || { emails: [], phones: [], whatsapps: [], grupos_whatsapp: [] };
+  const B = b || { emails: [], phones: [], whatsapps: [], grupos_whatsapp: [] };
+  const emails    = [...new Set([...(A.emails    || []), ...(B.emails    || [])])];
+  const phones    = [...new Set([...(A.phones    || []), ...(B.phones    || [])])];
+  const whatsapps = [...new Set([...(A.whatsapps || []), ...(B.whatsapps || [])])];
+  const grupos    = [...new Set([...(A.grupos_whatsapp || []), ...(B.grupos_whatsapp || [])])];
+  return {
+    emails, phones, whatsapps,
+    grupos_whatsapp: grupos,
+    has_contact: emails.length > 0 || phones.length > 0 || whatsapps.length > 0 || grupos.length > 0,
   };
 }
