@@ -37,12 +37,22 @@ async function fetchRelease(current) {
     const data = await resp.json();
     const latest = String(data.tag_name || '').replace(/^v/, '');
     if (!latest) return null;
+
+    // Preferência de download: asset .zip anexado à release > zipball do source code
+    const zipAsset = (data.assets || []).find(a =>
+      /\.zip$/i.test(a.name || '') && a.browser_download_url
+    );
+    const zipUrl = zipAsset?.browser_download_url
+      || data.zipball_url
+      || `https://github.com/${REPO}/archive/refs/tags/v${latest}.zip`;
+
     return {
       current,
       latest,
       available:   semverGt(latest, current),
       checkedAt:   Date.now(),
       downloadUrl: data.html_url || `https://github.com/${REPO}/releases/tag/v${latest}`,
+      zipUrl,
       name:        data.name || `v${latest}`,
       body:        (data.body || '').slice(0, 800),
       publishedAt: data.published_at || null,
@@ -73,6 +83,7 @@ async function fetchTag(current) {
       available:   semverGt(latest, current),
       checkedAt:   Date.now(),
       downloadUrl: `https://github.com/${REPO}/releases/tag/v${latest}`,
+      zipUrl:      `https://github.com/${REPO}/archive/refs/tags/v${latest}.zip`,
       name:        `v${latest}`,
     };
   } catch (_) { return null; }

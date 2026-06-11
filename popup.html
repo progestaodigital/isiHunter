@@ -36,8 +36,56 @@
       <div class="update-banner-sub" id="update-banner-versions"></div>
     </div>
     <div class="update-banner-actions">
-      <a class="btn btn-primary btn-sm" id="update-banner-download" target="_blank" rel="noopener" href="#">Ver release</a>
+      <button class="btn btn-primary btn-sm" id="update-banner-update">📥 Atualizar</button>
       <button class="update-banner-dismiss" id="update-banner-dismiss" title="Dispensar até a próxima versão">×</button>
+    </div>
+  </div>
+
+  <!-- ───── Overlay com instruções de atualização ───────────────── -->
+  <div class="update-overlay hidden" id="update-overlay">
+    <div class="update-overlay-card">
+      <div class="update-overlay-header">
+        <div class="update-overlay-title">📥 Atualizar IsiHunter</div>
+        <button class="update-overlay-close" id="update-overlay-close" title="Fechar">×</button>
+      </div>
+      <div class="update-overlay-versions" id="update-overlay-versions"></div>
+
+      <ol class="update-steps">
+        <li class="update-step" id="update-step-1">
+          <div class="update-step-num">1</div>
+          <div class="update-step-body">
+            <div class="update-step-title">Baixar o arquivo da nova versão</div>
+            <div class="update-step-sub">Vai abrir o download do ZIP do GitHub.</div>
+            <button class="btn btn-primary btn-sm update-step-btn" id="btn-update-download">
+              ⬇ Baixar ZIP
+            </button>
+          </div>
+        </li>
+        <li class="update-step">
+          <div class="update-step-num">2</div>
+          <div class="update-step-body">
+            <div class="update-step-title">Descompactar o ZIP</div>
+            <div class="update-step-sub">
+              Substitua os arquivos da pasta atual da extensão pelos novos.
+              <button class="btn-link" id="btn-show-folder">copiar caminho da pasta</button>
+            </div>
+          </div>
+        </li>
+        <li class="update-step">
+          <div class="update-step-num">3</div>
+          <div class="update-step-body">
+            <div class="update-step-title">Recarregar a extensão</div>
+            <div class="update-step-sub">Em <code>chrome://extensions</code>, clique no ícone ↻ do card "IsiHunter".</div>
+            <button class="btn btn-secondary btn-sm update-step-btn" id="btn-open-extensions">
+              🔧 Abrir chrome://extensions
+            </button>
+          </div>
+        </li>
+      </ol>
+
+      <div class="update-overlay-hint">
+        💡 Dica: depois da próxima vez que recarregar, o IsiHunter já estará na versão nova e este aviso some.
+      </div>
     </div>
   </div>
 
@@ -279,6 +327,25 @@
       <div class="field">
         <label for="filtroEngajamentoMin">Taxa de engajamento mín. (%)</label>
         <input id="filtroEngajamentoMin" type="number" min="0" step="0.1" placeholder="ex: 2.5" />
+      </div>
+
+      <div class="settings-section-title">Listas de Exclusão</div>
+      <div class="hint" style="margin-bottom:10px">
+        Por padrão a caça ignora perfis já aprovados (blacklist) e descartados nos últimos 30 dias (graylist). Ative os toggles abaixo para incluí-los nesta sessão.
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input id="ignorarBlacklist" type="checkbox" />
+          <span><strong>Ignorar blacklist</strong> — reprocessar perfis já aprovados antes</span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input id="ignorarGraylist" type="checkbox" />
+          <span><strong>Ignorar graylist</strong> — reprocessar perfis descartados recentemente</span>
+        </label>
       </div>
 
       <div class="settings-section-title">Meta da Sessão</div>
@@ -711,6 +778,6 @@
 
 </div><!-- /.app -->
 
-<script type="module" src="popup.js?v=34"></script>
+<script type="module" src="popup.js?v=37"></script>
 </body>
 </html>

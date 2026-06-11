@@ -60,6 +60,96 @@ function initUpdateBanner() {
     if (info?.latest) await sendToBg({ type: 'DISMISS_UPDATE', version: info.latest });
     document.getElementById('update-banner')?.classList.add('hidden');
   });
+
+  // Abrir overlay de instruções
+  document.getElementById('update-banner-update')?.addEventListener('click', openUpdateOverlay);
+
+  // Overlay: close
+  document.getElementById('update-overlay-close')?.addEventListener('click', closeUpdateOverlay);
+  document.getElementById('update-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'update-overlay') closeUpdateOverlay();
+  });
+
+  // Step 1: baixar ZIP — força check fresco pra pegar zipUrl atualizado
+  document.getElementById('btn-update-download')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-update-download');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Buscando…'; }
+    try {
+      let info = await getCurrentUpdateInfo();
+      // Se cache antigo não tem zipUrl, força fetch novo
+      if (!info?.zipUrl) {
+        const res = await sendToBg({ type: 'CHECK_VERSION', force: true });
+        info = res?.info;
+      }
+      const url = info?.zipUrl
+        || (info?.latest
+            ? `https://github.com/progestaodigital/isiHunter/archive/refs/tags/v${info.latest}.zip`
+            : info?.downloadUrl);
+      if (!url) {
+        alert('Não foi possível obter o link da nova versão. Verifique sua conexão e tente novamente.');
+        return;
+      }
+      chrome.tabs.create({ url });
+      const step1 = document.getElementById('update-step-1');
+      if (step1) {
+        step1.classList.add('done');
+        const num = step1.querySelector('.update-step-num');
+        if (num) num.textContent = '✓';
+      }
+    } catch (err) {
+      alert('Erro ao buscar nova versão: ' + (err?.message || err));
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '⬇ Baixar ZIP'; }
+    }
+  });
+
+  // Step 2: copiar caminho da pasta da extensão
+  document.getElementById('btn-show-folder')?.addEventListener('click', copyExtensionPath);
+
+  // Step 3: abrir chrome://extensions
+  document.getElementById('btn-open-extensions')?.addEventListener('click', () => {
+    chrome.tabs.create({ url: 'chrome://extensions/' });
+  });
+}
+
+async function openUpdateOverlay() {
+  const info = await getCurrentUpdateInfo();
+  const overlay = document.getElementById('update-overlay');
+  const versions = document.getElementById('update-overlay-versions');
+  if (versions) {
+    const cur = chrome.runtime.getManifest().version;
+    versions.textContent = info?.latest
+      ? `Versão atual: v${cur}  →  Nova versão: v${info.latest}`
+      : `Versão atual: v${cur}`;
+  }
+  overlay?.classList.remove('hidden');
+  const step1 = document.getElementById('update-step-1');
+  if (step1) {
+    step1.classList.remove('done');
+    const num = step1.querySelector('.update-step-num');
+    if (num) num.textContent = '1';
+  }
+}
+
+function closeUpdateOverlay() {
+  document.getElementById('update-overlay')?.classList.add('hidden');
+}
+
+// Copia o caminho real da pasta da extensão pra clipboard. Não temos como
+// descobrir o caminho de instalação direto (Chrome não expõe), então usamos
+// uma heurística + abrimos chrome://version onde o user vê "Profile Path".
+async function copyExtensionPath() {
+  const id = chrome.runtime.id;
+  // Tenta extrair o "load path" via management API se disponível (só funciona
+  // pra extensions instaladas via "load unpacked"). Permission "management"
+  // não está no manifest, então essa via não está disponível.
+  // Fallback: abre chrome://extensions (com query do ID) — o user clica em
+  // "Detalhes" e vê o caminho.
+  const url = `chrome://extensions/?id=${id}`;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch (_) {}
+  chrome.tabs.create({ url });
 }
 
 async function refreshUpdateBanner() {
@@ -149,6 +239,8 @@ async function loadSettings() {
     ['fonteEngajamentoAtiva',   cfg.fonteEngajamentoAtiva],
     ['fontePalavrasChaveAtiva', cfg.fontePalavrasChaveAtiva],
     ['extrairContatos',         cfg.extrairContatos],
+    ['ignorarBlacklist',        cfg.ignorarBlacklist],
+    ['ignorarGraylist',         cfg.ignorarGraylist],
   ].forEach(([id, v]) => {
     const cb = document.getElementById(id);
     if (cb) cb.checked = !!v;
@@ -203,6 +295,8 @@ async function saveSearchSettings() {
   cfg.filtroPostsDias         = val('filtroPostsDias');
   cfg.filtroEngajamentoMin    = val('filtroEngajamentoMin');
   cfg.metaLeads               = val('metaLeads');
+  cfg.ignorarBlacklist        = document.getElementById('ignorarBlacklist')?.checked || false;
+  cfg.ignorarGraylist         = document.getElementById('ignorarGraylist')?.checked || false;
   _metaCached                 = Number(cfg.metaLeads) || null;
   await saveSettings(cfg);
   showToast('search-toast', 'Configurações de busca salvas!', 'success');

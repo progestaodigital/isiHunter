@@ -1144,13 +1144,17 @@
 
   async function isBlacklisted(username) {
     return new Promise(resolve =>
-      chrome.storage.local.get('isi_blacklist', r => resolve(!!(r.isi_blacklist || {})[username]))
+      chrome.storage.local.get(['isi_blacklist', 'isi_settings'], r => {
+        if (r.isi_settings?.ignorarBlacklist) return resolve(false);
+        resolve(!!(r.isi_blacklist || {})[username]);
+      })
     );
   }
 
   async function isGreylisted(username) {
     return new Promise(resolve =>
-      chrome.storage.local.get('isi_graylist', r => {
+      chrome.storage.local.get(['isi_graylist', 'isi_settings'], r => {
+        if (r.isi_settings?.ignorarGraylist) return resolve(false);
         const expiry = (r.isi_graylist || {})[username];
         resolve(!!expiry && Date.now() < expiry);
       })

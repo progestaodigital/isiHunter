@@ -132,6 +132,141 @@ body {
   background: rgba(255, 255, 255, .08);
 }
 
+/* ── Overlay de instruções de atualização ──────────────────── */
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .65);
+  z-index: 999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px 12px;
+  overflow-y: auto;
+  animation: updateOverlayFadeIn .15s ease-out;
+}
+@keyframes updateOverlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.update-overlay-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 380px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.update-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.update-overlay-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.update-overlay-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.update-overlay-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, .08);
+}
+.update-overlay-versions {
+  font-size: .78rem;
+  color: var(--text-dim);
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.update-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.update-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+.update-step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+  font-size: .78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.update-step.done .update-step-num {
+  background: var(--green);
+}
+.update-step-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.update-step-title {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.update-step-sub {
+  font-size: .75rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.update-step-sub code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: .72rem;
+}
+.update-step-btn {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
+.update-overlay-hint {
+  font-size: .72rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 8px;
+  background: rgba(168, 85, 247, .06);
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
 /* ── Tabs ──────────────────────────────────────────────────── */
 .tabs {
   display: flex;
@@ -2032,6 +2167,23 @@ button.disabled-license {
 }
 .kanban-card-contactflag.wa    { color: #22c55e; }
 .kanban-card-contactflag.email { color: #60a5fa; }
+
+/* Origem do lead — pill no drawer */
+.kanban-source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(168, 85, 247, .12);
+  border: 1px solid rgba(168, 85, 247, .35);
+  border-radius: 99px;
+  color: var(--text);
+  font-size: .8rem;
+  font-weight: 500;
+}
+.kanban-source-pill .source-icon {
+  font-size: .95rem;
+}
 .approval-score {
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: .76rem;

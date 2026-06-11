@@ -46,11 +46,16 @@ function buildPayload(settings, profile) {
     contatoLinhas.push(`Grupos WA: ${profile.contatos.grupos_whatsapp.join(', ')}`);
   }
 
-  // Observações gerais com dados do perfil + contatos extraídos
+  // Origem do lead (fonte de busca de onde veio)
+  const leadSource = profile.lead_source;
+  const sourceLabel = leadSource?.label || null;
+
+  // Observações gerais com dados do perfil + contatos extraídos + origem
   const notes = [
     profile.bio        ? `Bio: ${profile.bio}`                : null,
     profile.seguidores ? `Seguidores: ${profile.seguidores}`  : null,
     profile.url_perfil ? `Perfil: ${profile.url_perfil}`      : null,
+    sourceLabel        ? `Origem: ${sourceLabel}`             : null,
     ...contatoLinhas,
   ].filter(Boolean).join('\n');
 
@@ -64,7 +69,9 @@ function buildPayload(settings, profile) {
     is_qualified:       true,
     temperature,
     lead_status:        'novo',
-    origin:             'mineração',
+    origin:             sourceLabel || 'mineração',
+    source_type:        leadSource?.type  || undefined,
+    source_value:       leadSource?.value || undefined,
 
     // ── Conteúdo gerado (opcional — só se mensagens foram geradas) ─────
     recent_post_url:    profile.url_post_recente || undefined,

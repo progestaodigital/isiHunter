@@ -547,10 +547,14 @@ async function processProfileLocal(profileData, cfg, stats) {
   }
 
   const now = Date.now();
+  const leadSource = currentLeadSource(stats);
+
   await saveProfile({
     ...profileData,
     score_local:        score,
     score_breakdown:    breakdown,
+    // Origem do lead — de qual fonte de busca veio
+    lead_source:        leadSource,
     // Auto-add ao Kanban (coluna padrão "Aprovados")
     kanban_column_id:   'aprovados',
     kanban_added_at:    now,
@@ -1016,6 +1020,35 @@ async function cacheProfilePic(username, picUrl) {
   } catch (err) {
     console.warn('[IsiHunter] cacheProfilePic failed for', username, err?.message);
   }
+}
+
+// Constrói o objeto de origem do lead com base na source atual da sessão.
+// Retorna { type, value?, label } — usado pra rastrear de onde o lead veio
+// (qual hashtag, qual perfil seguidores, etc) pra mostrar no Kanban e enviar
+// no payload do webhook.
+function currentLeadSource(stats) {
+  const sources = stats?.sources || [];
+  const idx     = stats?.source_idx || 0;
+  const source  = sources[idx];
+
+  if (!source) {
+    return { type: 'lista_manual', label: 'Triagem manual' };
+  }
+  if (source.type === 'hashtag') {
+    const hidx = stats?.hashtag_idx || 0;
+    const tag  = (source.list || [])[hidx] || '';
+    return { type: 'hashtag', value: tag, label: tag ? `Hashtag #${tag}` : 'Hashtag' };
+  }
+  if (source.type === 'seguidores') {
+    return { type: 'seguidores', value: source.perfil, label: `Seguidores de @${source.perfil}` };
+  }
+  if (source.type === 'engajamento') {
+    return { type: 'engajamento', value: source.perfil, label: `Engajamento em @${source.perfil}`, details: { n_posts: source.nPosts } };
+  }
+  if (source.type === 'palavras_chave') {
+    return { type: 'palavras_chave', value: (source.keywords || []).join(', '), label: `Busca: ${(source.keywords || []).join(', ')}` };
+  }
+  return { type: source.type, label: source.type };
 }
 
 function buildFiltersFromSettings(cfg) {

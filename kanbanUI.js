@@ -296,6 +296,20 @@ export function openKanbanDetail(username) {
   if (addedEl)  addedEl.textContent  = profile.kanban_added_at       ? formatFullDate(profile.kanban_added_at)       : '—';
   if (actionEl) actionEl.textContent = profile.kanban_last_action_at ? formatFullDate(profile.kanban_last_action_at) : '—';
 
+  // Origem do lead
+  const sourceSection = document.getElementById('kanban-source-section');
+  const sourceEl      = document.getElementById('kanban-detail-source');
+  if (sourceSection && sourceEl) {
+    const src = profile.lead_source;
+    if (src?.label) {
+      const icon = sourceIcon(src.type);
+      sourceEl.innerHTML = `<span class="source-icon">${icon}</span><span>${escHtml(src.label)}</span>`;
+      sourceSection.classList.remove('hidden');
+    } else {
+      sourceSection.classList.add('hidden');
+    }
+  }
+
   if (select) {
     select.innerHTML = state.columns
       .map(c => `<option value="${escHtml(c.id)}" ${c.id === profile.kanban_column_id ? 'selected' : ''}>${escHtml(c.name)}</option>`)
@@ -470,6 +484,17 @@ function formatNumber(n) {
   if (num >= 1_000_000) return (num / 1_000_000).toFixed(num >= 10_000_000 ? 0 : 1) + 'M';
   if (num >= 1_000)     return (num / 1_000).toFixed(num >= 10_000 ? 0 : 1) + 'K';
   return String(num);
+}
+
+function sourceIcon(type) {
+  switch (type) {
+    case 'hashtag':        return '#';
+    case 'seguidores':     return '👥';
+    case 'engajamento':    return '💬';
+    case 'palavras_chave': return '🔍';
+    case 'lista_manual':   return '📋';
+    default:               return '🎯';
+  }
 }
 
 // ─── Mensagens (geradas via OpenAI) ───────────────────────────────────────
