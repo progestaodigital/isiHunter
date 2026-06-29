@@ -35,7 +35,7 @@ import {
 } from './db.js';
 import { generateIcebreaker, generateHook, generateComment } from './openai.js';
 import { sendLead } from './webhook.js';
-import { validateLicense, gateAction, pulse, ensureAlarm, ALARM as LICENSE_ALARM } from './sync.js';
+import { validateLicense, checkGate, pulse, ensureAlarm, ALARM as LICENSE_ALARM } from './sync.js';
 import { passesFilters } from './filters.js';
 import { calculateScore } from './score.js';
 import { classifyFailure, shouldTriggerBlock, blockMessage } from './igBlockDetector.js';
@@ -122,12 +122,13 @@ const GATED_ACTIONS = new Set([
 ]);
 
 async function route(msg, _sender) {
-  // Gate de licença pra ações sensíveis
+  // Gate de licença pra ações sensíveis (local-first via entitlement assinado;
+  // cai pro fetch quando não há token válido em cache)
   if (GATED_ACTIONS.has(msg.type)) {
-    const r = await validateLicense({ force: true });
-    if (r?.status !== 'valid') {
+    const g = await checkGate();
+    if (!g.ok) {
       const err = new Error('license_required');
-      err.license_status = r?.status || 'unknown';
+      err.license_status = g.status;
       throw err;
     }
   }

@@ -1,6 +1,8 @@
 // sync.js — módulo interno de sincronização (ES Module)
 // Importado por background.js e popup.js
 
+import { verifyEntitlement } from './entitlement.js';
+
 // URL construída em runtime via array de char codes
 const __u = [104,116,116,112,115,58,47,47,97,112,105,46,105,115,105,116,111,111,108,115,46,99,111,109,46,98,114,47,118,49,47,108,105,99,101,110,115,101,47,118,97,108,105,100,97,116,101];
 const __p = [105,115,105,104,117,110,116,101,114];
@@ -13,8 +15,9 @@ const K_KEY    = 'license_key';
 const K_CACHE  = 'license_status';
 
 // TTLs (ms)
-const CACHE_FRESH_MS = 5  * 60 * 1000;        // 5min — cache considerado "fresco" pra boot
-const ALARM_NAME     = 'licenseCheck';
+const CACHE_FRESH_MS  = 5  * 60 * 1000;        // 5min — cache considerado "fresco" pra boot
+const REFRESH_AHEAD_MS = 30 * 60 * 1000;       // re-arma o token quando faltam <30min pro exp
+const ALARM_NAME      = 'licenseCheck';
 
 // Single-flight
 let _inflight = null;
@@ -157,10 +160,45 @@ async function __serverErrorFallback() {
 
 // ─── Gates rápidos ────────────────────────────────────────────────────────
 
-// Para gates de ação: força fresh fetch
-export async function gateAction() {
+// Gate de ação LOCAL-FIRST: se houver um `entitlement` (JWT Ed25519) válido em
+// cache, libera offline sem round-trip. Token presente mas reprovado/expirado,
+// kid desconhecido, ou ausente → FALLBACK pra validação fresca (comportamento
+// anterior; respeita grace_until via __serverErrorFallback).
+// Retorna { ok, status, via }.
+export async function checkGate() {
+  const c = await __readCache();
+  const token = c?.payload?.entitlement;
+
+  if (token) {
+    const hwid = await __fp();
+    const v = await verifyEntitlement(token, hwid).catch(() => null);
+    if (v?.valid) {
+      // Perto de expirar → re-arma o token em background, sem bloquear a ação
+      if (v.timeLeftMs < REFRESH_AHEAD_MS) {
+        validateLicense({ force: true }).catch(() => {});
+      }
+      return { ok: true, status: 'valid', via: 'token' };
+    }
+    // token reprovado/expirado/kid desconhecido → cai pro fetch abaixo
+  }
+
+  // Fallback: validação fresca no servidor (igual ao fluxo anterior)
   const r = await validateLicense({ force: true });
-  return r?.status === 'valid';
+  return { ok: r?.status === 'valid', status: r?.status || 'unknown', via: 'fetch' };
+}
+
+// Para gates de ação (compat com chamadas existentes no popup): bool simples
+export async function gateAction() {
+  return (await checkGate()).ok;
+}
+
+// Mascara a license-key pra log/diagnóstico: ISI-****-****-****-XXXX.
+// A key NUNCA deve aparecer inteira em log algum.
+export function maskKey(k) {
+  const s = String(k || '');
+  const m = s.match(/^ISI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-([0-9A-Z]{4})$/i);
+  if (m) return `ISI-****-****-****-${m[1].toUpperCase()}`;
+  return s ? 'ISI-****-****-****-****' : '';
 }
 
 // Para checkpoints periódicos: silent (usa cache fresco)
